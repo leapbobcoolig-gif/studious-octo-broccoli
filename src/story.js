@@ -589,6 +589,7 @@
     },
   ];
 
+  PD.popAt = popAt; PD.tile = tile; PD.fxText = fxText; PD.seeded = seeded;
   const CPS = [24, 48, 110];
   SM.scenes.intro = {
     enter() { this.art = this.art || new PD.FB(); this.shot = 0; this.startShot(); },
@@ -892,12 +893,12 @@
         if (done) {
           PD.drawDude(fb, 288, 184, Object.assign({ s: 2 }, CAST.twink, { face: 'happy', blush: true }));
           PD.bubble(fb, 226, 112, 'U UP?? :3', 264, 128);
-          if (UI.button(fb, 'open', 150, 148, 72, 14, 'OPEN CHAT', { ramp: 'neon' })) SM.go('chapter');
+          if (UI.button(fb, 'open', 150, 148, 72, 14, 'OPEN CHAT', { ramp: 'neon' })) { const sv = PD.Save.load() || {}; sv.chapter = 'chat'; PD.Save.write(sv); SM.go('phone'); }
         } else if (Math.sin(SM.t * 6) > 0) PD.text(fb, 'CLICK', 290, 172, C('ink', 4));
       }
       if (UI.back) SM.go('menu');
     },
   };
 
-  PD.chapterScene = (sv) => (!sv ? 'menu' : sv.chapter === 'intro' ? 'intro' : sv.chapter === 'profile' ? 'profile' : sv.chapter === 'posted' ? 'posted' : 'chapter');
+  PD.chapterScene = (sv) => (!sv ? 'menu' : ({ intro: 'intro', profile: 'profile', posted: 'posted', chat: 'phone' })[sv.chapter] || 'chapter');
 })(window.PD);

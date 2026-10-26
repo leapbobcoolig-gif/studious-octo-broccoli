@@ -318,11 +318,11 @@
     draw(fb) {
       PD.drawSkyline(fb, SM.t, 0.55);
       PD.panel(fb, 50, 30, 220, 110, 'neon', { fill: 0, inner: 'ink', innerShade: 1 });
-      PD.textS(fb, 'CHAPTER 2', W / 2, 42, 2, C('gold', 2), { center: true, outline: C('ink', 0) });
-      PD.textS(fb, 'TYLER, 21', W / 2, 58, 2, C('neon', 3), { center: true, outline: C('ink', 0), wave: 1, t: this.t });
-      PD.textS(fb, 'HE IS STILL TYPING. THE CHAT, THE TRICK', W / 2, 80, 1, C('ui', 4), { center: true });
-      PD.textS(fb, 'AND THE ROOM ARRIVE IN MILESTONES 3-5.', W / 2, 88, 1, C('ui', 4), { center: true });
-      PD.textS(fb, '(HE IS VERY GAY. NOT FOR LONG.)', W / 2, 98, 1, C('cyan', 3), { center: true });
+      PD.textS(fb, 'CHAPTER 3', W / 2, 42, 2, C('gold', 2), { center: true, outline: C('ink', 0) });
+      PD.textS(fb, 'THE ROOM', W / 2, 58, 2, C('neon', 3), { center: true, outline: C('ink', 0), wave: 1, t: this.t });
+      PD.textS(fb, 'TYLER IS ON HIS WAY. BLINDFOLDED.', W / 2, 80, 1, C('ui', 4), { center: true });
+      PD.textS(fb, 'THE ROOM, THE REVEAL AND THE CONVERSION', W / 2, 88, 1, C('ui', 4), { center: true });
+      PD.textS(fb, 'LAND IN MILESTONE 4.', W / 2, 96, 1, C('cyan', 3), { center: true });
       if (UI.button(fb, 'sb', 70, 112, 84, 14, 'SANDBOX', { ramp: 'lime' })) SM.go('sandbox');
       if (UI.button(fb, 'bk', 166, 112, 84, 14, 'MAIN MENU', { ramp: 'neon' }) || UI.back) SM.go('menu');
     },
