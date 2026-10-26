@@ -1,0 +1,4 @@
+humans.js is baked from the MakeHuman base mesh, default skeleton, default weights and
+morph targets (https://github.com/makehumancommunity/makehuman), which were released
+under CC0 1.0 Universal by their copyright holders (Data Collection AB, Joel Palmius,
+Jonas Hauquier). Regenerate with: python3 tools/prep_humans.py <makehuman/data> assets/humans.js
