@@ -49,7 +49,7 @@ const MATS=[null,
   {keys:'uv',    base:'#b45a6c', o:{spread:0.50,shift:8},           shin:20, spec:0.30},   // 4 asshole
   {keys:'ABCDE', base:'#b5764a', o:{lo:0.42,hi:0.11,shift:8,sat:0.95}, shin:22, spec:0.18},   // 5 his skin
   {keys:'WXYZ',  base:'#4a3328', o:{spread:0.50,shift:10},          shin:10, spec:0.10},   // 6 hair
-  {keys:'FGHIJK',base:'#9a4e46', o:{lo:0.38,hi:0.13,shift:8,sat:0.9}, shin:18, spec:0.22},   // 7 shaft / sack
+  {keys:'FGHIJK',base:'#a8594c', o:{lo:0.34,hi:0.13,shift:8,sat:0.9}, shin:18, spec:0.22},   // 7 shaft / sack
   {keys:'PQRS',  base:'#d9708a', o:{spread:0.70,shift:10},          shin:50, spec:0.80},   // 8 glans
 ];
 const LINES={ z:'#1a0f1e', o:'#9a5446', O:'#5a3428', V:'#4a2222', x:'#6e2238', n:'#2a1820', l:'#2b1b2b', L:'#4a3047' };
@@ -74,25 +74,52 @@ const FS=`#version 300 es
 precision highp float;
 uniform sampler2D uMat,uNrm,uRoom,uLut,uLine,uRamp;
 uniform int uFrame; uniform vec3 uLamp; uniform float uLampOn, uPixel, uTime;
+uniform vec4 uCheek[2];   // offset xy, squash
+uniform vec4 uBall[2];    // centre xy, offset xy
+uniform vec4 uSack;       // top y, squash L, squash R
+uniform vec4 uLeg;        // swing angle L, R
 out vec4 o;
 const float RN=${RAMP_N}.;
 vec3 ramp(float mat, float t){ t=clamp(t,0.,1.)*(RN-1.); float i=floor(t), f=t-i;
   vec3 a=texelFetch(uRamp, ivec2(int(mat)*${RAMP_N}+int(i),0),0).rgb, b=texelFetch(uRamp, ivec2(int(mat)*${RAMP_N}+int(min(i+1.,RN-1.)),0),0).rgb;
   return mix(a,b,f); }
 float bayer(ivec2 p){ int x=p.x&3, y=p.y&3; int m[16]=int[16](0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5); return (float(m[y*4+x])+0.5)/16.; }
+mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+vec4 matAt(int layer, vec2 q){ ivec2 s=ivec2(floor(q)); if(s.x<0||s.y<0||s.x>319||s.y>179) return vec4(0.); return texelFetch(uMat, ivec2(uFrame*320+s.x, layer*180+s.y),0); }
+int partOf(vec4 m){ return int(m.b*255.+0.5); }
+// physics: find which source pixel lands on screen pixel p (inverse warp, per body part)
+vec4 pickMat(vec2 p, out ivec2 src, out int layer){
+  // the sack layer swings and squashes on top
+  { float neck=smoothstep(uSack.x-2.,uSack.x+14.,p.y);
+    float w0=exp(-dot(p-uBall[0].xy-uBall[0].zw,p-uBall[0].xy-uBall[0].zw)/288.), w1=exp(-dot(p-uBall[1].xy-uBall[1].zw,p-uBall[1].xy-uBall[1].zw)/288.);
+    float tot=max(w0+w1,1e-4), k=min(1.,(w0+w1)*1.6)*neck; vec2 q=p-(uBall[0].zw*w0+uBall[1].zw*w1)/tot*k;
+    for(int i=0;i<2;i++){ vec2 c=uBall[i].xy+uBall[i].zw; float w=(i==0?w0:w1)/tot*k; float sq=(i==0?uSack.y:uSack.z)*w;
+      vec2 bot=c+vec2(0.,10.); q=mix(q, bot+(q-bot)/vec2(1.+sq*0.08,1.-sq*0.08), w); }
+    vec4 m=matAt(1,q); if(m.a>0.5){ src=ivec2(floor(q)); layer=1; return m; } }
+  layer=0;
+  // her legs swing from the hips (more toward her feet)
+  for(int i=0;i<2;i++){ vec2 pv=vec2(i==0?126.:194.,88.); float w=clamp((pv.y-p.y)/120.,0.,1.);
+    vec2 q=pv+rot(-(i==0?uLeg.x:uLeg.y)*w)*(p-pv); vec4 m=matAt(0,q); if(m.a>0.5 && partOf(m)==1+i){ src=ivec2(floor(q)); return m; } }
+  // her cheeks jiggle and squash
+  for(int i=0;i<2;i++){ vec2 c=vec2(i==0?136.:184.,114.); vec2 d=(p-c)/vec2(31.,35.); float w=smoothstep(1.15,0.2,length(d))*smoothstep(1.,6.,abs(p.x-160.));
+    vec2 sc=vec2(1.+uCheek[i].z*0.10*w,1.-uCheek[i].z*0.12*w); vec2 q=p-uCheek[i].xy*w; q=mix(q,c+(q-c)/sc,w);
+    vec4 m=matAt(0,q); if(m.a>0.5 && (partOf(m)==3+i || (partOf(m)==4-i && abs(q.x-160.)<3.))){ src=ivec2(floor(q)); return m; } }
+  vec4 m=matAt(0,p); int pt=partOf(m);
+  if(pt>=1 && pt<=2){ src=ivec2(floor(p)); return vec4(0.); }   // that bit of her leg moved away: the room shows through
+  src=ivec2(floor(p)); return m; }
 void main(){
   ivec2 p=ivec2(gl_FragCoord.xy); p.y=179-p.y;
   vec3 room=texelFetch(uRoom,p,0).rgb;
   vec3 lampC=vec3(1.0,0.72,0.45);
   vec3 toLampR=uLamp-vec3(vec2(p),0.); float dR=length(toLampR.xy);
   float glow=uLampOn*0.55/(1.+dR*dR/(110.*110.));
-  vec4 m=texelFetch(uMat, ivec2(uFrame*320+p.x, p.y),0);
+  ivec2 src; int layer; vec4 m=pickMat(vec2(p)+0.5, src, layer);
   if(m.a<0.5){ o=vec4(room*(0.62+glow*lampC*1.1),1.); return; }
   int key=int(m.r*255.+0.5); float flag=m.g*255.;
   vec4 lu=texelFetch(uLut, ivec2(key,0),0);
   if(lu.b>0.5){ vec3 c=texelFetch(uLine, ivec2(key,0),0).rgb; o=vec4(c*(0.85+glow*lampC*0.6),1.); return; }
   float mat=lu.r*255.; float tone=lu.g;
-  vec3 n=normalize(texelFetch(uNrm, ivec2(uFrame*320+p.x,p.y),0).rgb*2.-1.);
+  vec3 n=normalize(texelFetch(uNrm, ivec2(uFrame*320+src.x, layer*180+src.y),0).rgb*2.-1.);
   // lights in screen space (x right, y down, z toward the viewer)
   vec3 L=normalize(vec3(-0.55,-0.62,0.58));
   float key_=max(0.,(dot(n,L)+0.08)/1.08);
@@ -109,6 +136,7 @@ void main(){
       else { float fq=mq.g*255.; vec4 lq=texelFetch(uLut, ivec2(int(mq.r*255.+0.5),0),0);
         if(fq>0.5 || abs(lq.r*255.-mat)>0.5) occ+=w; } } }
   float ao=1.-clamp(occ/9.,0.,1.)*0.75;
+  if(layer==1) ao=max(ao,0.9);                                    // the sack sits out in front: its own shading, not the crease shading behind it
   float lum=(0.03+0.62*key_+fill*0.7+rim*0.7+lamp*0.75)*ao;
   // hand-drawn creases keep their darkness (crack, seams, folds); highlights stay bright
   if(flag>1.5){ lum*=mix(0.52,1.12,tone); }
@@ -129,10 +157,14 @@ gl.useProgram(prog);
 function tex(unit, w, h, data){ const t=gl.createTexture(); gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-  if(data instanceof HTMLImageElement) gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,data);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,gl.NONE);
+  if(data && data.width && !(data instanceof Uint8Array)) gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,data);
   else gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,data); return t; }
 const U=n=>gl.getUniformLocation(prog,n);
-function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+// decode sprite data exactly (no colour profile, no premultiplied alpha): these PNGs hold numbers, not colours
+async function loadImg(src){ const blob=await (await fetch(src)).blob();
+  try{ return await createImageBitmap(blob,{premultiplyAlpha:'none',colorSpaceConversion:'none'}); }
+  catch(e){ return await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=URL.createObjectURL(blob); }); } }
 
 // -------------------------------------------------------------- state ------
 const S={ pixel:false, gray:false, lamp:true, kinsey:3, lampPos:[230,40,46], mouse:null, cam:'close' };
@@ -152,8 +184,39 @@ const hud=document.getElementById('hud'), hctx=hud.getContext('2d'), hbuf=new Ui
 const C={ink:[26,15,30],paper:[255,246,234],uiD:[43,27,51],uiM:[91,68,112],heart:[255,92,138],blush:[255,125,154],brow:[58,39,33]};
 let t0=performance.now(), score=0, combo=0;
 function frameAt(t){ const speed=1.6-(S.kinsey/6)*0.85, F=META.frames, total=F.reduce((a,f)=>a+f.ms,0)/speed; let x=(t%total), i=0; while(i<F.length-1 && x>=F[i].ms/speed){ x-=F[i].ms/speed; i++; } return {i, total, speed}; }
+// ------------------------------------------------------------- physics -----
+// 2D springs in screen pixels. The slam (frame 3) kicks her cheeks, legs and his balls;
+// the balls also lag behind every jump of the sprite's own sack position, then swing back.
+const spr=()=>({x:[0,0],v:[0,0]});
+const PH={ cheek:[spr(),spr()], ball:[spr(),spr()], ballSq:[0,0], leg:[{a:0,v:0},{a:0,v:0}], prevFrame:-1, prevBy:null, t:0, plap:0 };
+function spring(o,k,c,dt){ for(let i=0;i<2;i++){ o.v[i]+=(-k*o.x[i]-c*o.v[i])*dt; o.x[i]+=o.v[i]*dt; } }
+function slam(power){
+  PH.cheek.forEach((c,i)=>{ c.v[0]+=(i?1:-1)*26*power; c.v[1]+=72*power; });
+  PH.leg.forEach((l,i)=>{ l.v+=(i?1:-1)*1.1*power*(0.8+Math.random()*0.4); });
+  PH.ball.forEach(b=>{ b.v[0]+=(Math.random()-0.5)*36*power; });
+}
+function physics(dt,f){
+  const fr=META.frames[f];
+  if(f!==PH.prevFrame){ if(f===3) slam(0.8+(6-S.kinsey)*0.08); PH.prevFrame=f; }
+  if(PH.prevBy===null) PH.prevBy=fr.by;
+  const dBy=fr.by-PH.prevBy; PH.prevBy=fr.by;
+  PH.ball.forEach((b,i)=>{ if(dBy){ b.x[1]-=dBy*(0.55+i*0.1); b.v[1]-=dBy*4; }
+    spring(b,95,3.2,dt);
+    const floor=fr.mode==='slap'?1.5:fr.mode==='mid'?4:6;          // the sack can't sink into her
+    if(b.x[1]>floor){ const hit=b.v[1]; b.x[1]=floor; if(hit>0){ b.v[1]=-hit*0.35; if(hit>60){ PH.ballSq[i]=Math.min(1,hit/260); PH.plap=0.3; PH.cheek.forEach(c=>c.v[1]+=hit*0.12); } } }
+    b.x[1]=Math.max(-9,b.x[1]); b.x[0]=Math.max(-5,Math.min(5,b.x[0]));
+    PH.ballSq[i]=Math.max(0,PH.ballSq[i]-dt*4); });
+  PH.cheek.forEach(c=>{ spring(c,175,6.5,dt); c.x[1]=Math.max(-6,Math.min(9,c.x[1])); c.x[0]=Math.max(-5,Math.min(5,c.x[0])); });
+  PH.leg.forEach((l,i)=>{ l.v+=(-60*l.a-4.5*l.v)*dt; l.a=Math.max(-0.3,Math.min(0.3,l.a+l.v*dt)); });
+}
+let lastNow=null, acc=0;
 function loop(now){
   const t=now-t0, {i,total}=frameAt(t);
+  { const dt=lastNow===null?0:Math.min(0.05,Math.max(0,(now-lastNow)/1000)); lastNow=now; acc+=dt; while(acc>1/240){ physics(1/240,i); acc-=1/240; } PH.plap=Math.max(0,PH.plap-dt); }
+  { const fr=META.frames[i], gap=fr.mode==='slap'?10:fr.mode==='mid'?9:8.5, drop=fr.mode==='slap'?1:fr.mode==='mid'?2:3;
+    gl.uniform4fv(U('uCheek'),[PH.cheek[0].x[0],PH.cheek[0].x[1],Math.max(-0.5,Math.min(1,PH.cheek[0].x[1]*0.12)),0, PH.cheek[1].x[0],PH.cheek[1].x[1],Math.max(-0.5,Math.min(1,PH.cheek[1].x[1]*0.12)),0]);
+    gl.uniform4fv(U('uBall'),[160-gap,fr.by+drop,PH.ball[0].x[0],PH.ball[0].x[1], 160+gap,fr.by,PH.ball[1].x[0],PH.ball[1].x[1]]);
+    gl.uniform4f(U('uSack'),fr.sackTop,PH.ballSq[0],PH.ballSq[1],0); gl.uniform4f(U('uLeg'),PH.leg[0].a,PH.leg[1].a,0,0); }
   // the lamp: a candle that wanders on its own, or follows the mouse
   const flick=0.92+0.08*Math.sin(now*0.023)+0.05*Math.sin(now*0.071);
   const lp=S.mouse||[230+Math.sin(now*0.0004)*30, 40+Math.cos(now*0.0005)*10];
@@ -165,7 +228,7 @@ function loop(now){
   const hitAt=(META.frames.slice(0,3).reduce((a,f)=>a+f.ms,0))/(META.frames.reduce((a,f)=>a+f.ms,0));
   let d=hitAt-phaseToHit; if(d<0) d+=1;
   UI.rhythm(c,160,96,d<0.7?d/0.7:0,C,(d>0.93||d<0.03)?'PERFECT!':null);
-  if(i===3||i===4) c.textOutlined('PLAP!',186,70,C.paper,C.ink);
+  if(PH.plap>0.1) c.textOutlined('PLAP!',196,104,C.paper,C.ink);
   UI.hud(c,{score:Math.floor(t/40),hearts:3,combo:[Math.floor(t/400)%2000,Math.floor(t/1000)%99],kinsey:S.kinsey,toolHot:-1},C);
   const lines=UI.LINES[S.kinsey]||UI.LINES[3]; UI.speech(c,6,150,lines[Math.floor(t/3500)%lines.length],C);
   hctx.putImageData(new ImageData(hbuf,320,180),0,0);
