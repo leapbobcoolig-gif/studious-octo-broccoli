@@ -1,17 +1,15 @@
 // node tools/build_lit.js <art.px.js> <outdir> <name>
-// Runs a pxl art file's drawing code outside pxl and writes, as strips (frames across,
-// depth layers down):
-//   <name>.mat.png  R = palette key (char code), G = flags (1 outline, 2 hand-drawn crease),
-//                   B = height toward the viewer (px * 3), A = coverage
+// Runs a pxl art file's drawing code outside pxl and writes, as horizontal frame strips:
+//   <name>.mat.png  R = palette key (char code), G = flags (1 outline, 2 hand-drawn crease), A = coverage
 //   <name>.nrm.png  surface normal, x/y/z mapped 0..255 (y points down the screen, z at the viewer)
-//   <name>.json     frame size, timings, anchors
-// The game lights, shadows and moves these per pixel at runtime.
+//   <name>.json     frame size, timings, anchor points
+// The game lights these per pixel at runtime.
 const fs = require('fs'), path = require('path'), vm = require('vm'), zlib = require('zlib')
 const [art, outdir, name] = process.argv.slice(2)
 const dir = path.dirname(path.resolve(art))
 const grids = {}
 const ctx = {
-  Math, console, Float32Array, Uint8Array, Int32Array, Int8Array, Array,
+  Math, console, Float32Array, Uint8Array, Int32Array, Array,
   pal() {}, shades() {}, ramps() {},
   include(f) { const src = fs.readFileSync(path.join(dir, f), 'utf8'); if (/cbase|base/.test(f)) vm.runInContext(src, ctx) },
   sprite(n, a, b) { const g = typeof a === 'string' ? a : b; if (typeof g === 'string') grids[n] = g.replace(/^\n/, '').split('\n') },
@@ -19,24 +17,19 @@ const ctx = {
 }
 vm.createContext(ctx)
 vm.runInContext(fs.readFileSync(path.resolve(art), 'utf8') + '\n;this.__R = R; this.__draw = drawFrame;', ctx)
-const R = ctx.__R, W = 320, H = 180, N = R.length, NL = 5
-const SW = W * N, SH = H * NL
-const mat = Buffer.alloc(SW * SH * 4), nrm = Buffer.alloc(SW * SH * 4), prev = Buffer.alloc(SW * H * 4)
-const anchors = []
+const R = ctx.__R, W = 320, H = 180, N = R.length
+const mat = Buffer.alloc(W * N * H * 4), nrm = Buffer.alloc(W * N * H * 4)
 R.forEach((r, f) => {
   const g = grids[`_cbase${f}`] || []
   const c = { key: (x, y) => (g[y] && g[y][x]) || '.', px() {} }
   const F = ctx.__draw(r, c, f)
-  anchors.push(F.anchor)
-  F.layers.forEach((L, li) => {
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const i = y * W + x, k = L.k[i], o = ((li * H + y) * SW + f * W + x) * 4
-      if (k === '.') continue
-      mat[o] = k.charCodeAt(0); mat[o + 1] = L.fl[i]; mat[o + 2] = Math.max(0, Math.min(255, Math.round(L.ht[i] * 3))); mat[o + 3] = 255
-      let nx = L.n[i * 3], ny = L.n[i * 3 + 1], nz = L.n[i * 3 + 2]; if (!nx && !ny && !nz) nz = 1
-      nrm[o] = Math.round((nx * 0.5 + 0.5) * 255); nrm[o + 1] = Math.round((ny * 0.5 + 0.5) * 255); nrm[o + 2] = Math.round((nz * 0.5 + 0.5) * 255); nrm[o + 3] = 255
-    }
-  })
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, k = F.k[i], o = (y * W * N + f * W + x) * 4
+    if (k === '.') continue
+    mat[o] = k.charCodeAt(0); mat[o + 1] = F.fl[i]; mat[o + 2] = 0; mat[o + 3] = 255
+    let nx = F.n[i * 3], ny = F.n[i * 3 + 1], nz = F.n[i * 3 + 2]; if (!nx && !ny && !nz) nz = 1
+    nrm[o] = Math.round((nx * 0.5 + 0.5) * 255); nrm[o + 1] = Math.round((ny * 0.5 + 0.5) * 255); nrm[o + 2] = Math.round((nz * 0.5 + 0.5) * 255); nrm[o + 3] = 255
+  }
 })
 function png(file, w, h, buf) {
   const raw = Buffer.alloc((w * 4 + 1) * h); for (let y = 0; y < h; y++) { raw[y * (w * 4 + 1)] = 0; buf.copy(raw, y * (w * 4 + 1) + 1, y * w * 4, (y + 1) * w * 4) }
@@ -46,7 +39,7 @@ function png(file, w, h, buf) {
   fs.writeFileSync(file, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ih), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]))
 }
 fs.mkdirSync(outdir, { recursive: true })
-png(path.join(outdir, name + '.mat.png'), SW, SH, mat)
-png(path.join(outdir, name + '.nrm.png'), SW, SH, nrm)
-fs.writeFileSync(path.join(outdir, name + '.json'), JSON.stringify({ w: W, h: H, layers: NL, frames: R.map((r, f) => ({ ms: r.ms, out: r.out, mode: r.mode, ...anchors[f] })) }))
-console.log('built', name, N, 'frames x', NL, 'layers')
+png(path.join(outdir, name + '.mat.png'), W * N, H, mat)
+png(path.join(outdir, name + '.nrm.png'), W * N, H, nrm)
+fs.writeFileSync(path.join(outdir, name + '.json'), JSON.stringify({ w: W, h: H, frames: R.map((r) => ({ ms: r.ms, out: r.out, pussy: [160, 96] })) }))
+console.log('built', name, N, 'frames')

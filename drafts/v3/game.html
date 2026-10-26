@@ -2,57 +2,34 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!--ARTIFACT-START-->
-<title>Straight Up Bedroom</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=VT323&display=swap">
+<title>Bedroom</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  /* one screen: the bedroom canvas, then a row of chunky toggles */
-  :root{
-    --bg:#120c16; --panel:#20172a; --line:#3d2c4c; --ink:#f3e6ee; --dim:#a691b0; --accent:#ff6f91;
-    --font:"Silkscreen", ui-monospace, Menlo, monospace; --body:"VT323", ui-monospace, Menlo, monospace;
-    color-scheme:dark;
-  }
-  html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--ink);font:18px/1.2 var(--body);box-sizing:border-box;
-    padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:10px;
-    display:flex;flex-direction:column;align-items:center;gap:10px;overflow-x:hidden}
-  #wrap{position:relative;width:min(100%, calc((100vh - 130px) * 1.7778));aspect-ratio:16/9;max-width:100%;touch-action:manipulation;user-select:none;-webkit-user-select:none;cursor:pointer}
-  #wrap canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;display:block}
-  #bar{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:100%}
-  #bar button{font:12px/1 var(--font);text-transform:uppercase;letter-spacing:.04em;background:var(--panel);color:var(--ink);
-    border:1px solid var(--line);border-bottom-width:3px;border-radius:3px;padding:7px 10px;cursor:pointer}
-  #bar button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  #bar button b{color:var(--accent);font-weight:400}
-  #hint{font:17px/1.2 var(--body);color:var(--dim);text-align:center;margin:0;max-width:60ch}
-  #err{color:var(--accent);font:16px/1.3 var(--body);margin:0}
+  :root{ --bg:#0d0a12; --panel:#1c1426; --ink:#f4e9f2; --accent:#ff5c8a; }
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.3 ui-monospace,Menlo,monospace}
+  #wrap{position:relative;width:min(100vw,177.7vh);margin:0 auto}
+  canvas{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges}
+  #hud{position:absolute;inset:0}
+  #bar{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:8px}
+  button,label{background:var(--panel);color:var(--ink);border:1px solid #3b2b4d;border-radius:4px;padding:5px 9px;font:inherit;cursor:pointer}
+  button.on{border-color:var(--accent);color:var(--accent)}
+  input[type=range]{vertical-align:middle}
 </style>
-<!--ARTIFACT-HEAD-END-->
 </head>
 <body>
 <div id="wrap"><canvas id="gl" width="320" height="180"></canvas><canvas id="hud" width="320" height="180"></canvas></div>
 <div id="bar">
-  <button id="bLight">Shading <b>smooth</b></button>
-  <button id="bPal">Palette <b>color</b></button>
-  <button id="bLamp">Candle <b>wander</b></button>
-  <button id="bLube">Lube <b>ready</b></button>
-  <button id="bSnd">Sound <b>off</b></button>
+  <button id="bLight" class="on">Lighting: smooth</button>
+  <button id="bPal">Palette: color</button>
+  <button id="bLamp" class="on">Lamp: on (move mouse)</button>
+  <button id="bCam">Camera: close</button>
+  <label>Kinsey <input id="kin" type="range" min="0" max="6" value="3"> <span id="kv">3</span></label>
 </div>
-<p id="hint">Tap the screen or press space right as he slams in. Hit the beat and he hits harder: more jiggle, more plap. Fill his bar to knock his Kinsey down.</p>
-<p id="err" hidden></p>
 <script src="ui.js"></script>
 <script>
 'use strict';
-// =============================================================================
-//  Hand-drawn sprites, lit live. Each frame is 5 depth layers (her legs, his legs,
-//  her ass + pussy + shaft, his back + glutes, his sack), each pixel carrying a
-//  palette key, a normal and a height. The shader moves layers with spring
-//  physics, casts soft shadows across the height field, and lights the result.
-// =============================================================================
-const W=320, H=180, NL=5;
-const ASSETS=window.__ASSETS||{ mat:'game/sprites/press_close.mat.png', nrm:'game/sprites/press_close.nrm.png', room:'game/sprites/room_color.png', meta:'game/sprites/press_close.json' };
 // ------------------------------------------------------------ palette ------
+// same hue-shifted ramps as sprites/palette.px.js, but 8 steps so light can sweep smoothly
 function hex(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
 function rgb2hsl(r,g,b){ r/=255;g/=255;b/=255; const mx=Math.max(r,g,b), mn=Math.min(r,g,b); let h=0,s=0; const l=(mx+mn)/2;
   if(mx!==mn){ const d=mx-mn; s=l>0.5?d/(2-mx-mn):d/(mx+mn); h= mx===r?(g-b)/d+(g<b?6:0): mx===g?(b-r)/d+2:(r-g)/d+4; h*=60; } return [h,s,l]; }
@@ -61,365 +38,150 @@ function hsl2rgb(h,s,l){ h=((h%360)+360)%360/360; if(s===0) return [l*255,l*255,
   return [f(h+1/3),f(h),f(h-1/3)].map(v=>Math.round(v*255)); }
 function toward(h,t,a){ const d=((t-h+540)%360)-180; return h+Math.sign(d)*Math.min(Math.abs(d),a); }
 function shadeRamp(base,n,o={}){ const [h,s0,l0]=rgb2hsl(...hex(base)); const shift=o.shift??24, spread=o.spread??0.56, sat=o.sat??1;
-  return Array.from({length:n},(_,i)=>{ const t=n===1?0:i/(n-1)-0.5; const l=Math.max(0.03,Math.min(0.97,l0+t*spread));
-    const hh=t<0?toward(h,262,shift*-t*2):toward(h,50,shift*t*2); const s=Math.max(0,Math.min(1,s0*sat*(t<0?1+0.3*-t*2:1-0.35*t*2)));
+  return Array.from({length:n},(_,i)=>{ const t=n===1?0:i/(n-1)-0.5; const lo=o.lo??spread/2, hi=o.hi??spread/2; const l=Math.max(0.04,Math.min(0.93,l0+(t<0?t*2*lo:t*2*hi)));
+    const hh=t<0?toward(h,250,shift*-t*2):toward(h,55,shift*t*2); const s=Math.max(0,Math.min(1,s0*sat*(t<0?1-0.1*-t*2:1-0.3*t*2)));
     return hsl2rgb(hh,s,l); }); }
-// material: palette keys, base colour, ramp, specular (shininess, strength), subsurface
+// material: keys, base colour, ramp options, shininess, specular strength
 const MATS=[null,
-  {keys:'abcde', base:'#e2ab8c', o:{spread:0.66,shift:18,sat:0.72}, shin:34, spec:0.30, sss:1.0},   // 1 her skin (oiled)
-  {keys:'fghi',  base:'#e3a196', o:{spread:0.78,shift:12,sat:0.80}, shin:36, spec:0.35, sss:1.0},   // 2 outer lips
-  {keys:'jkmp',  base:'#d85a7a', o:{spread:0.70,shift:10},          shin:70, spec:0.80, sss:0.8},   // 3 wet pink
-  {keys:'uv',    base:'#b45a6c', o:{spread:0.50,shift:8},           shin:20, spec:0.25, sss:0.6},   // 4 asshole
-  {keys:'ABCDE', base:'#b98058', o:{spread:0.76,shift:16,sat:1.0}, shin:22, spec:0.18, sss:0.7},   // 5 his skin
-  {keys:'WXYZ',  base:'#4a3328', o:{spread:0.50,shift:10},          shin:10, spec:0.05, sss:0.0},   // 6 hair
-  {keys:'FGHIJK',base:'#9e5850', o:{spread:0.78,shift:12,sat:1.0}, shin:26, spec:0.25, sss:0.9},   // 7 shaft / sack
-  {keys:'PQRS',  base:'#d9708a', o:{spread:0.70,shift:10},          shin:60, spec:0.70, sss:0.8},   // 8 glans
+  {keys:'abcde', base:'#e9b294', o:{lo:0.42,hi:0.11,shift:20,sat:0.66}, shin:28, spec:0.30},   // 1 her skin (oiled)
+  {keys:'fghi',  base:'#de968a', o:{lo:0.40,hi:0.11,shift:16,sat:0.75}, shin:30, spec:0.30},   // 2 outer lips
+  {keys:'jkmp',  base:'#d0506e', o:{lo:0.36,hi:0.15,shift:8},     shin:60, spec:0.60},   // 3 wet pink
+  {keys:'uv',    base:'#b45a6c', o:{spread:0.50,shift:8},           shin:20, spec:0.30},   // 4 asshole
+  {keys:'ABCDE', base:'#b5764a', o:{lo:0.42,hi:0.11,shift:8,sat:0.95}, shin:22, spec:0.18},   // 5 his skin
+  {keys:'WXYZ',  base:'#4a3328', o:{spread:0.50,shift:10},          shin:10, spec:0.10},   // 6 hair
+  {keys:'FGHIJK',base:'#9a4e46', o:{lo:0.38,hi:0.13,shift:8,sat:0.9}, shin:18, spec:0.22},   // 7 shaft / sack
+  {keys:'PQRS',  base:'#d9708a', o:{spread:0.70,shift:10},          shin:50, spec:0.80},   // 8 glans
 ];
-const LINES={ z:'#1a0f1e', o:'#8a4a40', O:'#4e2c22', V:'#43201f', x:'#6e2238', n:'#24141c', l:'#2b1b2b', L:'#4a3047' };
+const LINES={ z:'#1a0f1e', o:'#9a5446', O:'#5a3428', V:'#4a2222', x:'#6e2238', n:'#2a1820', l:'#2b1b2b', L:'#4a3047' };
 const RAMP_N=8;
-// his skin per lover: [skin base, sack/shaft base]
-const TONES=[['#b27650','#8f4f46'],['#9c6240','#7e4238'],['#7c4c2f','#663528'],['#5c3620','#4c281b'],['#c08a64','#9c5a50'],['#a86e48','#8a4a3e']];
-function buildLUTs(gray, tone){
-  const lut=new Uint8Array(256*4), lineCol=new Uint8Array(256*4), ramp=new Uint8Array(RAMP_N*16*4), mp=new Float32Array(16*4);
+function buildLUTs(gray){
+  const lut=new Uint8Array(256*4), lineCol=new Uint8Array(256*4), ramp=new Uint8Array(RAMP_N*16*4);
   MATS.forEach((m,mi)=>{ if(!m) return;
-    let base=m.base; if(mi===5) base=tone[0]; if(mi===7) base=tone[1];
-    let r=shadeRamp(base,RAMP_N,m.o);
-    if(gray && ![2,3,4,8].includes(mi)) r=r.map(c=>{ const v=Math.round(0.3*c[0]+0.59*c[1]+0.11*c[2]); return [v,v,v]; });
+    let r=shadeRamp(m.base,RAMP_N,m.o);
+    if(gray && mi!==2 && mi!==3 && mi!==4 && mi!==8) r=r.map(c=>{ const v=Math.round(0.3*c[0]+0.59*c[1]+0.11*c[2]); return [v,v,v]; });
     r.forEach((c,i)=>ramp.set([...c,255],(mi*RAMP_N+i)*4));
-    mp.set([m.shin,m.spec,m.sss,0],mi*4);
     [...m.keys].forEach((k,ti)=>lut.set([mi, Math.round(ti/(m.keys.length-1)*255), 0, 255], k.charCodeAt(0)*4)); });
   for(const [k,h] of Object.entries(LINES)){ let c=hex(h); if(gray){ const v=Math.round(0.3*c[0]+0.59*c[1]+0.11*c[2]); c=[v,v,v]; }
     lut.set([0,0,255,255],k.charCodeAt(0)*4); lineCol.set([...c,255],k.charCodeAt(0)*4); }
-  return {lut,lineCol,ramp,mp};
+  return {lut,lineCol,ramp};
 }
 
-// -------------------------------------------------------------- shaders ----
+// -------------------------------------------------------------- WebGL ------
+const cv=document.getElementById('gl'), gl=cv.getContext('webgl2',{antialias:false,premultipliedAlpha:false});
 const VS=`#version 300 es
 void main(){ vec2 p=vec2((gl_VertexID<<1)&2, gl_VertexID&2); gl_Position=vec4(p*2.-1.,0.,1.); }`;
 const FS=`#version 300 es
 precision highp float;
 uniform sampler2D uMat,uNrm,uRoom,uLut,uLine,uRamp;
-uniform int uFrame;
-uniform vec4 uLamp;          // x y height intensity
-uniform vec4 uMP[16];        // per material: shininess, specular, subsurface
-uniform vec4 uCheek[2];      // offset xy, squash, -
-uniform vec4 uBall[2];       // centre xy, offset xy
-uniform vec4 uSack;          // top y, squash L, squash R, lube
-uniform vec4 uLeg;           // angle L, angle R, -, -
-uniform vec4 uGlute;         // offset xy, glute centre y, flush
-uniform float uPixel, uGray, uTime;
+uniform int uFrame; uniform vec3 uLamp; uniform float uLampOn, uPixel, uTime;
 out vec4 o;
 const float RN=${RAMP_N}.;
 vec3 ramp(float mat, float t){ t=clamp(t,0.,1.)*(RN-1.); float i=floor(t), f=t-i;
   vec3 a=texelFetch(uRamp, ivec2(int(mat)*${RAMP_N}+int(i),0),0).rgb, b=texelFetch(uRamp, ivec2(int(mat)*${RAMP_N}+int(min(i+1.,RN-1.)),0),0).rgb;
   return mix(a,b,f); }
 float bayer(ivec2 p){ int x=p.x&3, y=p.y&3; int m[16]=int[16](0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5); return (float(m[y*4+x])+0.5)/16.; }
-mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
-// where to read layer li from, for screen pixel p (inverse warp)
-vec2 warp(int li, vec2 p){
-  if(li==0){ // her legs swing from the hips, more toward the feet
-    float s=p.x<160.?0.:1.; vec2 pv=vec2(s<0.5?128.:192.,86.); float a=s<0.5?uLeg.x:uLeg.y;
-    float w=clamp((pv.y-p.y)/120.,0.,1.); return pv+rot(-a*w)*(p-pv); }
-  if(li==2){ vec2 q=p;
-    for(int i=0;i<2;i++){ vec2 c=vec2(i==0?136.:184.,114.); vec2 d=(p-c)/vec2(31.,35.); float r=length(d);
-      float w=smoothstep(1.08,0.2,r)*smoothstep(1.,6.,abs(p.x-160.));
-      float sq=uCheek[i].z*w; vec2 sc=vec2(1.+sq*0.10,1.-sq*0.12);
-      q-= uCheek[i].xy*w; q=mix(q, c+(q-c)/sc, w); }
-    return q; }
-  if(li==3){ float w=smoothstep(30.,6.,abs(p.y-uGlute.z))*smoothstep(44.,8.,abs(p.x-160.)); return p-uGlute.xy*w; }
-  if(li==4){ vec2 q=p; float neck=smoothstep(uSack.x-2.,uSack.x+14.,p.y);
-    float w0=exp(-dot(p-uBall[0].xy-uBall[0].zw,p-uBall[0].xy-uBall[0].zw)/(2.*12.*12.)), w1=exp(-dot(p-uBall[1].xy-uBall[1].zw,p-uBall[1].xy-uBall[1].zw)/(2.*12.*12.));
-    float tot=max(w0+w1,1e-4), k=min(1.,(w0+w1)*1.6)*neck;      // share the move between the balls, never over 100%
-    vec2 off=(uBall[0].zw*w0+uBall[1].zw*w1)/tot*k; q-=off;
-    for(int i=0;i<2;i++){ vec2 c=uBall[i].xy+uBall[i].zw; float w=(i==0?w0:w1)/tot*k;
-      float sq=(i==0?uSack.y:uSack.z)*w; vec2 sc=vec2(1.+sq*0.18,1.-sq*0.22); vec2 bot=c+vec2(0.,10.);
-      q=mix(q, bot+(q-bot)/sc, w); }
-    return q; }
-  return p; }
-// sample layer li at a screen pixel, with its warp: mat (key, flag, height, a) and normal
-vec4 layerMat(int li, vec2 p, out vec2 src){ src=warp(li,p); ivec2 s=ivec2(floor(src));
-  if(s.x<0||s.y<0||s.x>319||s.y>179) return vec4(0.); return texelFetch(uMat, ivec2(uFrame*320+s.x, li*180+s.y),0); }
-// the visible pixel: topmost layer that has something there
-int topLayer(vec2 p, out vec4 m, out ivec2 at){
-  for(int li=4; li>=0; li--){ vec2 src; vec4 mm=layerMat(li,p,src); if(mm.a>0.5){ m=mm; at=ivec2(floor(src)); return li; } }
-  m=vec4(0.); at=ivec2(0); return -1; }
-float heightAt(vec2 p){ vec4 m; ivec2 at; int li=topLayer(p,m,at); return li<0? -14. : m.b*255./3.; }
 void main(){
-  ivec2 pi=ivec2(gl_FragCoord.xy); pi.y=179-pi.y; vec2 p=vec2(pi)+0.5;
-  vec4 m; ivec2 at; int li=topLayer(p,m,at);
-  float hp= li<0? -14. : m.b*255./3.;
-  // ---- candle: soft shadow marched over the height field
-  vec3 lamp=uLamp.xyz; vec2 toL=lamp.xy-p; float dxy=length(toL); vec2 dir=toL/max(dxy,1e-3);
-  float sh=1.; float tt=1.5;
-  for(int i=0;i<22;i++){ if(tt>dxy) break; float rayH=hp+(lamp.z-hp)*(tt/dxy); float hs=heightAt(p+dir*tt);
-    sh=min(sh, smoothstep(0.,3.5,rayH-hs+2.5+tt*0.07)); tt+=1.4+tt*0.18; }
-  vec3 P3=vec3(p,hp); vec3 Lv=normalize(vec3(lamp.xy-p, (lamp.z-hp)*1.0)); float dl=length(vec3(lamp.xy-p,lamp.z-hp));
-  float att=uLamp.w/(1.+dl*dl/(230.*230.));
-  vec3 lampC=vec3(1.,0.66,0.40);
-  if(li<0){ // the room: lit by the candle, darkened under the bodies' shadows
-    vec3 room=texelFetch(uRoom,pi,0).rgb;
-    float g=uLamp.w*0.5/(1.+dxy*dxy/(90.*90.));
-    vec3 c=room*(0.42+0.55*att*sh)*mix(vec3(0.85,0.82,1.05),lampC*1.3,g); c+=lampC*g*0.12;
-    if(uGray>0.5) c=vec3(dot(c,vec3(0.3,0.59,0.11)));
-    o=vec4(c,1.); return; }
+  ivec2 p=ivec2(gl_FragCoord.xy); p.y=179-p.y;
+  vec3 room=texelFetch(uRoom,p,0).rgb;
+  vec3 lampC=vec3(1.0,0.72,0.45);
+  vec3 toLampR=uLamp-vec3(vec2(p),0.); float dR=length(toLampR.xy);
+  float glow=uLampOn*0.55/(1.+dR*dR/(110.*110.));
+  vec4 m=texelFetch(uMat, ivec2(uFrame*320+p.x, p.y),0);
+  if(m.a<0.5){ o=vec4(room*(0.62+glow*lampC*1.1),1.); return; }
   int key=int(m.r*255.+0.5); float flag=m.g*255.;
   vec4 lu=texelFetch(uLut, ivec2(key,0),0);
-  // ---- ambient occlusion from the height field (creases, the crack, under the sack)
-  float occ=0.;
-  for(int i=0;i<8;i++){ float a=float(i)*0.785+0.4; vec2 d=vec2(cos(a),sin(a));
-    occ+=clamp((heightAt(p+d*3.)-hp)/5.,0.,1.)*0.6+clamp((heightAt(p+d*7.)-hp)/10.,0.,1.)*0.4; }
-  float ao=1.-clamp(occ/8.,0.,1.)*0.85;
-  if(lu.b>0.5){ vec3 c=texelFetch(uLine, ivec2(key,0),0).rgb; o=vec4(c*(0.75+0.5*att*sh)*mix(vec3(1.),lampC,0.3),1.); return; }
+  if(lu.b>0.5){ vec3 c=texelFetch(uLine, ivec2(key,0),0).rgb; o=vec4(c*(0.85+glow*lampC*0.6),1.); return; }
   float mat=lu.r*255.; float tone=lu.g;
-  vec3 n=normalize(texelFetch(uNrm, ivec2(uFrame*320+at.x, li*180+at.y),0).rgb*2.-1.);
-  vec4 mp=uMP[int(mat)];
-  float sss=mp.z;
-  if(mat==7.||mat==8.) { ao=mix(ao,1.,0.5); sh=max(sh,0.45); }
-  float shaftLift=(li==2&&mat==7.)?0.16:0.;
-  // ---- light
-  float ndl=dot(n,Lv);
-  float wrap=0.3*sss;
-  float difRaw=0.; float dif=clamp((ndl+wrap)/(1.+wrap),0.,1.)*att*sh*0.8;
-  vec3 F=normalize(vec3(0.75,0.25,0.62)); float fill=max(0.,dot(n,F))*0.18;                    // cool window fill
-  float rim=pow(1.-max(n.z,0.),2.)*max(0.,dot(normalize(n.xy+1e-4),normalize(vec2(0.8,-0.6))))*0.42; // moon rim
-  float up=0.5-0.5*n.y; float amb=(0.17+0.09*up)*ao;
-  float lum=amb+dif*0.95+fill*ao+rim*ao+shaftLift;
-  if(flag>1.5) lum*=mix(0.55,1.1,tone);
-  float t=clamp(lum*0.9,0.,1.);
-  float s=t;
-  if(uPixel>0.5){ float q=t*6.; float fr=fract(q); q=floor(q)+(fr>0.72&&bayer(pi)<(fr-0.72)/0.28?1.:0.); s=q/6.; }
-  vec3 c=ramp(mat,s);
-  // colour of the light: warm where the candle reaches, cool in the shadow
-  vec3 tint=mix(vec3(0.82,0.84,1.08), vec3(1.12,0.96,0.84), clamp(dif*1.4,0.,1.));
-  c*=tint;
-  c+=c*vec3(1.,0.22,0.12)*sss*0.55*att*clamp(ndl+0.35,0.,1.)*clamp(0.45-ndl,0.,1.)*(0.4+0.6*sh);   // subsurface at the terminator
-  c+=vec3(0.45,0.55,1.)*rim*0.22*ao;
-  // ---- oily speculars: a broad sheen plus a tight hot spot
-  vec3 Hh=normalize(Lv+vec3(0.,0.,1.)); float nh=max(dot(n,Hh),0.);
-  float lube=uSack.w;
-  float spec=(pow(nh,mp.x)*mp.y*(1.+lube*0.8)+pow(nh,8.)*0.05*mp.y)*att*sh;
-  if(uPixel>0.5) spec=spec>0.18?0.55:spec>0.08?0.2:0.;
-  c+=spec*lampC*1.1;
-  // flush: her cheeks redden with every slam
-  if(mat==1.){ float fl=uGlute.w*smoothstep(42.,10.,length(p-vec2(160.,112.))); c=mix(c,c*vec3(1.08,0.8,0.82),fl*0.6); }
-  if(uGray>0.5 && !(mat>1.5&&mat<4.5)) c=vec3(dot(c,vec3(0.3,0.59,0.11)));
+  vec3 n=normalize(texelFetch(uNrm, ivec2(uFrame*320+p.x,p.y),0).rgb*2.-1.);
+  // lights in screen space (x right, y down, z toward the viewer)
+  vec3 L=normalize(vec3(-0.55,-0.62,0.58));
+  float key_=max(0.,(dot(n,L)+0.08)/1.08);
+  float fill=max(0.,dot(n,normalize(vec3(0.7,0.15,0.7))))*0.22;
+  float rim=pow(1.-max(n.z,0.),2.2)*max(0.,dot(normalize(n.xy+1e-4),normalize(vec2(0.75,-0.65))))*0.45;
+  vec3 toLamp=uLamp-vec3(vec2(p),0.); float dl=length(toLamp);
+  float lamp=uLampOn*max(0.,dot(n,normalize(toLamp)))*1.15/(1.+dl*dl/(95.*95.));
+  // contact shading: darken next to creases, outlines and other materials (crack, sack on her, thigh edges)
+  float occ=0.;
+  for(int i=0;i<8;i++){ float a=float(i)*0.785; vec2 d=vec2(cos(a),sin(a));
+    for(int r=1;r<=3;r++){ ivec2 q=p+ivec2(round(d*float(r*2))); vec4 mq=texelFetch(uMat, ivec2(uFrame*320+clamp(q.x,0,319), clamp(q.y,0,179)),0);
+      float w=1./float(r);
+      if(mq.a<0.5) occ+=0.25*w;
+      else { float fq=mq.g*255.; vec4 lq=texelFetch(uLut, ivec2(int(mq.r*255.+0.5),0),0);
+        if(fq>0.5 || abs(lq.r*255.-mat)>0.5) occ+=w; } } }
+  float ao=1.-clamp(occ/9.,0.,1.)*0.75;
+  float lum=(0.03+0.62*key_+fill*0.7+rim*0.7+lamp*0.75)*ao;
+  // hand-drawn creases keep their darkness (crack, seams, folds); highlights stay bright
+  if(flag>1.5){ lum*=mix(0.52,1.12,tone); }
+  float shin=mat==1.?28.:mat==2.?30.:mat==3.?60.:mat==5.?22.:mat==7.?18.:mat==8.?50.:12.;
+  float sstr=mat==1.?0.55:mat==2.?0.5:mat==3.?0.9:mat==5.?0.35:mat==7.?0.35:mat==8.?0.8:0.1;
+  float spec=pow(max(0.,dot(n,normalize(L+vec3(0,0,1)))),shin)*sstr + uLampOn*pow(max(0.,dot(n,normalize(normalize(toLamp)+vec3(0,0,1)))),shin)*sstr*0.8/(1.+dl*dl/(95.*95.));
+  float t=lum*0.86;
+  if(uPixel>0.5){ float s=t*5.; float fr=fract(s); float b=bayer(p); s=floor(s)+(fr>0.78&&b<(fr-0.78)/0.22?1.:0.); t=s/5.; spec=spec>0.45?1.:0.; }
+  vec3 c=ramp(mat,t);
+  c+= spec*mix(vec3(1.,0.9,0.8),c*1.4,0.5)*(uPixel>0.5?0.4:0.5);
+  c*= mix(vec3(1.),vec3(1.08,0.98,0.9),uLampOn*min(1.,lamp));
   o=vec4(c,1.);
 }`;
-const POST=`#version 300 es
-precision highp float;
-uniform sampler2D uSrc; uniform float uPal;
-out vec4 o;
-void main(){ ivec2 p=ivec2(gl_FragCoord.xy); vec3 c=texelFetch(uSrc,p,0).rgb;
-  float Y=dot(c,vec3(0.3,0.59,0.11));
-  c=mix(c, c*vec3(0.92,0.86,1.14), (1.-Y)*0.4);   // violet shadows
-  c=mix(c, c*vec3(1.05,1.0,0.92), Y*0.35);        // peach highlights
-  vec2 uv=gl_FragCoord.xy/vec2(320.,180.)-0.5; c*=1.-dot(uv,uv)*0.6;
-  o=vec4(c,1.); }`;
-
-let gl, prog, post, U={}, UP={}, fbo, fboTex;
-function boot3d(){
-  const cv=document.getElementById('gl'); gl=cv.getContext('webgl2',{antialias:false,premultipliedAlpha:false,preserveDrawingBuffer:true});
-  if(!gl) throw new Error('This game needs WebGL2. Try a recent Chrome, Firefox or Safari.');
-  const sh=(t,s)=>{ const x=gl.createShader(t); gl.shaderSource(x,s); gl.compileShader(x); if(!gl.getShaderParameter(x,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
-  const mk=fs=>{ const p=gl.createProgram(); gl.attachShader(p,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
-  prog=mk(FS); post=mk(POST);
-  ['uMat','uNrm','uRoom','uLut','uLine','uRamp','uFrame','uLamp','uMP','uCheek','uBall','uSack','uLeg','uGlute','uPixel','uGray','uTime'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
-  ['uSrc','uPal'].forEach(n=>UP[n]=gl.getUniformLocation(post,n));
-  fboTex=gl.createTexture(); gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D,fboTex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,W,H,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
-  fbo=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,fboTex,0); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
-}
+function sh(t,s){ const x=gl.createShader(t); gl.shaderSource(x,s); gl.compileShader(x); if(!gl.getShaderParameter(x,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; }
+const prog=gl.createProgram(); gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS)); gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
 function tex(unit, w, h, data){ const t=gl.createTexture(); gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,gl.NONE);
   if(data instanceof HTMLImageElement) gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,data);
   else gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,data); return t; }
-function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('Could not load '+src.slice(0,60))); i.src=src; }); }
+const U=n=>gl.getUniformLocation(prog,n);
+function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
 
-// --------------------------------------------------------------- lovers ----
-const FIRST=['Brayden','Tyler','Chad','Jaxon','Dmitri','Marcus','Kai','Theo','Logan','Connor','Mateo','Darnell','Finn','Rico','Jesse','Hunter','Ezra','Bastian','Colt','Andre'];
-const LAST=['Vance','Moss','Rivera','Holt','Kowalski','Bishop','Okafor','Lindqvist','Sato','Delacroix','Price','Hart','Novak','Reyes'];
-const BIOS=[
-  'Owns 14 crop tops and zero opinions about women.','Thinks pussy is a myth Big Straight made up.','Gym 6x a week. Leg day never. Brunch daily.',
-  'His Grindr bio is a Taylor Swift lyric.','Has a protein shaker in every room of his apartment.','Came here on a dare from his boyfriend Kevin.',
-  'Calls himself a Kinsey 6, spiritually a 7.','Once fainted at a gender reveal party.','Lost a bet in Mykonos. This is the bet.',
-  'Pilates instructor. Hips do not lie, apparently.','Says he is only here for the cardio.','His mom keeps asking about a girlfriend. Now what?',
-];
-function newLover(){ const r=a=>a[Math.floor(Math.random()*a.length)];
-  return { name:r(FIRST)+' '+r(LAST), age:19+Math.floor(Math.random()*16), bio:r(BIOS), tone:r(TONES), kinsey:6, arousal:0 }; }
-
-// ---------------------------------------------------------------- state ----
-let META;
-const S={ pixel:false, gray:false, lampMode:'wander', mouse:null, sound:false, lube:0, lubeCd:0 };
-const G={ score:0, combo:0, best:0, converted:0, lover:newLover(), judge:null, judgeT:0, plapT:0, card:5, done:0, lastTap:-9 };
-try{ const s=JSON.parse(localStorage.getItem('sub_save')||'{}'); if(s.score) G.score=s.score; if(s.converted) G.converted=s.converted; if(s.best) G.best=s.best; }catch(e){}
-function save(){ try{ localStorage.setItem('sub_save',JSON.stringify({score:G.score,converted:G.converted,best:G.best})); }catch(e){} }
-
-// -------------------------------------------------------------- physics ----
-// springs are 2D offsets in screen pixels, kicked by the slam and by the sprite's own motion
-const spr=()=>({x:[0,0],v:[0,0]});
-const PH={ cheek:[spr(),spr()], ball:[spr(),spr()], ballSq:[0,0], leg:[{a:0,v:0},{a:0,v:0}], glute:spr(), flush:0, power:1, prevBy:null, prevByV:0 };
-function spring(o,k,c,dt,ax=0,ay=0){ for(let i=0;i<2;i++){ const f=-k*o.x[i]-c*o.v[i]-(i?ay:ax); o.v[i]+=f*dt; o.x[i]+=o.v[i]*dt; } }
-function slam(){
-  const pw=PH.power*(S.lube>0?1.15:1);
-  PH.cheek.forEach((c,i)=>{ c.v[0]+=(i?1:-1)*28*pw; c.v[1]+=70*pw; });
-  PH.leg.forEach((l,i)=>{ l.v+=(i?1:-1)*1.0*pw*(0.8+Math.random()*0.4); });
-  PH.glute.v[1]+=40*pw;
-  PH.ball.forEach((b,i)=>{ b.v[0]+=(Math.random()-0.5)*40*pw; });
-  PH.flush=Math.min(1,PH.flush+0.1*pw);
-  squelch();
-  PH.power=Math.max(0.8,PH.power*0.55);
-}
-function physics(dt, f){
-  const fr=META.frames[f];
-  // the sack's sprite anchor jumps frame to frame; the balls lag behind each jump, then swing
-  const by=fr.by; if(PH.prevBy===null) PH.prevBy=by;
-  const dBy=by-PH.prevBy; PH.prevBy=by;
-  PH.ball.forEach((b,i)=>{ if(dBy){ b.x[1]-=dBy*(0.55+i*0.1); b.v[1]-=dBy*4; }
-    spring(b,95,3.2,dt);
-    // they can't sink into her: at the slam the bottom of the sack sits on her taint
-    const floor=fr.mode==='slap'?1.5:fr.mode==='mid'?4:6;
-    if(b.x[1]>floor){ const hit=b.v[1]; b.x[1]=floor; if(hit>0){ b.v[1]=-hit*0.35; if(hit>60){ PH.ballSq[i]=Math.min(1,hit/260); if(i===0) plap(hit); PH.cheek.forEach(c=>c.v[1]+=hit*0.12); } } }
-    if(b.x[1]<-14) { b.x[1]=-14; b.v[1]=Math.abs(b.v[1])*0.3; }
-    b.x[0]=Math.max(-5,Math.min(5,b.x[0])); b.x[1]=Math.max(-9,b.x[1]);
-    PH.ballSq[i]=Math.max(0,PH.ballSq[i]-dt*4); });
-  PH.cheek.forEach(c=>spring(c,175,6.5,dt));
-  PH.cheek.forEach(c=>{ c.x[1]=Math.max(-6,Math.min(9,c.x[1])); c.x[0]=Math.max(-5,Math.min(5,c.x[0])); });
-  PH.leg.forEach((l,i)=>{ const f=-60*l.a-4.5*l.v+Math.sin(clock*1.3+i)*0.4; l.v+=f*dt; l.a+=l.v*dt; l.a=Math.max(-0.35,Math.min(0.35,l.a)); });
-  spring(PH.glute,380,12,dt);
-  PH.flush=Math.max(0,PH.flush-dt*0.03);
-}
-
-// ------------------------------------------------------------------ audio ---
-let AC=null;
-function plap(v){ G.plapT=0.35; if(!S.sound||!AC) return;
-  const t=AC.currentTime, len=0.12, buf=AC.createBuffer(1,Math.floor(AC.sampleRate*len),AC.sampleRate), d=buf.getChannelData(0);
-  for(let i=0;i<d.length;i++){ const x=i/d.length; d[i]=(Math.random()*2-1)*Math.pow(1-x,6)+Math.sin(i/AC.sampleRate*2*Math.PI*90)*Math.pow(1-x,3)*0.8; }
-  const src=AC.createBufferSource(); src.buffer=buf; const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=900+Math.min(v,300)*5;
-  const g=AC.createGain(); g.gain.value=Math.min(0.9,0.25+v/500); src.connect(f).connect(g).connect(AC.destination); src.start(t); }
-function squelch(){ if(!S.sound||!AC) return; const t=AC.currentTime, len=0.18, buf=AC.createBuffer(1,Math.floor(AC.sampleRate*len),AC.sampleRate), d=buf.getChannelData(0);
-  for(let i=0;i<d.length;i++){ const x=i/d.length; d[i]=(Math.random()*2-1)*Math.sin(x*Math.PI)*0.5; }
-  const src=AC.createBufferSource(); src.buffer=buf; const f=AC.createBiquadFilter(); f.type='bandpass'; f.Q.value=6; f.frequency.setValueAtTime(500,t); f.frequency.exponentialRampToValueAtTime(1600,t+len);
-  const g=AC.createGain(); g.gain.value=0.3; src.connect(f).connect(g).connect(AC.destination); src.start(t); }
-
-// ------------------------------------------------------------------- game ---
-// the loop: frame 3 is the slam. Speed rises as his Kinsey drops.
-const SLAM=3;
-let clock=0, loopT=0, curFrame=0, lastSlamAt=-9;
-function speed(){ return 0.62+(6-G.lover.kinsey)*0.11; }
-function loopLen(){ return META.frames.reduce((a,f)=>a+f.ms,0)/1000/speed(); }
-function frameAt(t){ const F=META.frames; let x=t*speed()*1000, i=0; while(i<F.length-1 && x>=F[i].ms){ x-=F[i].ms; i++; } return i; }
-function slamOffset(){ return META.frames.slice(0,SLAM).reduce((a,f)=>a+f.ms,0)/1000/speed(); }
-function judgeTap(){
-  if(G.done) return;
-  G.lastTap=clock;
-  const L=loopLen(), toNext=((slamOffset()-loopT)%L+L)%L, since=clock-lastSlamAt;
-  const off=Math.min(toNext,since), win=S.lube>0?1.6:1;
-  let j, gain;
-  if(off<0.06*win){ j='PERFECT!'; gain=10; } else if(off<0.13*win){ j='GOOD'; gain=6; } else { j='MISS'; gain=-4; }
-  if(gain>0){ G.combo++; PH.power=gain>8?1.8:1.4; if(since<toNext){ PH.cheek.forEach(c=>c.v[1]+=30); PH.leg.forEach((l,i)=>l.v+=(i?1:-1)*0.4); } }
-  else G.combo=0;
-  G.best=Math.max(G.best,G.combo);
-  const mult=1+Math.min(G.combo,40)*0.05+G.converted*0.25;
-  G.score+=Math.max(0,Math.round(gain*mult));
-  const Lv=G.lover; Lv.arousal=Math.max(0,Math.min(100,Lv.arousal+gain*(1+G.combo*0.02)*(1+G.converted*0.1)));
-  if(Lv.arousal>=100){ Lv.kinsey--; Lv.arousal=0; G.judge='KINSEY '+Lv.kinsey+'!'; G.judgeT=1.4; if(Lv.kinsey<=0){ G.done=1; G.converted++; G.score+=500*G.converted; } save(); return; }
-  G.judge=j; G.judgeT=0.6;
-}
-function nextLover(){ G.lover=newLover(); G.done=0; G.card=5; G.combo=0; setLUTs(); save(); }
-
-// ------------------------------------------------------------------- draw ---
-const hud=document.getElementById('hud'), hctx=hud.getContext('2d'), hbuf=new Uint8ClampedArray(W*H*4);
-const C={ink:[26,15,30],paper:[255,246,234],uiD:[43,27,51],uiM:[91,68,112],heart:[255,111,145],blush:[255,125,154],brow:[58,39,33]};
-function wrapText(s,n){ const w=s.toUpperCase().split(' '), out=[]; let l=''; for(const x of w){ if((l+' '+x).trim().length>n){ out.push(l.trim()); l=x; } else l+=' '+x; } if(l.trim()) out.push(l.trim()); return out; }
-function drawHUD(dt){
-  hbuf.fill(0); const c=new Canvas2(hbuf,W,H), L=G.lover;
-  c.rect(0,3,74,10,C.uiD); c.text('SCORE '+G.score,4,6,C.paper);
-  if(G.combo>1) c.textOutlined('X'+G.combo+' COMBO',4,17,C.paper,C.ink);
-  const kx=W-80, ky=4; c.rect(kx-3,ky-2,80,26,C.uiD);
-  c.text('KINSEY',kx,ky,C.paper); c.text(String(L.kinsey),kx+68,ky,C.heart);
-  for(let i=0;i<6;i++){ const lit=i<6-L.kinsey; c.rect(kx+i*12,ky+8,10,5,lit?C.heart:C.uiM); if(!lit) c.rect(kx+i*12+1,ky+9,8,3,C.uiD); }
-  c.rect(kx,ky+16,72,4,C.ink); c.rect(kx,ky+16,Math.round(72*L.arousal/100),4,[255,190,120]);
-  const Lp=loopLen(), toNext=((slamOffset()-loopT)%Lp+Lp)%Lp/Lp;
-  UI.rhythm(c,160,96,toNext<0.8?toNext/0.8:0,C,null);
-  if(G.judgeT>0){ G.judgeT-=dt; const j=G.judge; c.textOutlined(j,Math.round(160-j.length*2),64,j==='MISS'?[190,170,200]:C.paper,C.ink); }
-  if(G.plapT>0){ G.plapT-=dt; if(G.plapT>0.12) c.textOutlined('PLAP!',196,106,C.paper,C.ink); }
-  const lines=UI.LINES[L.kinsey]||UI.LINES[3]; UI.speech(c,5,150,lines[Math.floor(clock/4)%lines.length],C);
-  if(G.card>0 && !G.done){ G.card-=dt; const bx=96, by=38, bio=wrapText(L.bio,28);
-    c.rect(bx,by,128,34+bio.length*7,C.ink); c.rect(bx+1,by+1,126,32+bio.length*7,C.uiD);
-    c.text('NEW LOVER',bx+5,by+5,C.heart); c.text(L.name+', '+L.age,bx+5,by+14,C.paper); c.text('KINSEY 6',bx+5,by+21,[170,148,192]);
-    bio.forEach((l,i)=>c.text(l,bx+5,by+30+i*7,C.paper)); }
-  if(G.done){ const bx=82, by=48; c.rect(bx,by,156,52,C.ink); c.rect(bx+1,by+1,154,50,C.uiD);
-    c.textOutlined('CONVERTED!',bx+58,by+6,C.heart,C.ink); c.text(L.name.split(' ')[0]+' IS STRAIGHT NOW.',bx+6,by+18,C.paper);
-    c.text('LOVERS CONVERTED: '+G.converted,bx+6,by+26,C.paper); c.text('BEST COMBO: '+G.best,bx+6,by+33,C.paper);
-    c.rect(bx+40,by+40,76,9,C.heart); c.text('TAP: NEXT LOVER',bx+44,by+42,C.ink); }
-  if(S.lube>0) c.text('LUBE '+Math.ceil(S.lube),W-40,H-10,[150,200,255]);
-  hctx.putImageData(new ImageData(hbuf,W,H),0,0);
-}
-function setLUTs(){ const L=buildLUTs(S.gray,G.lover.tone); tex(3,256,1,L.lut); tex(4,256,1,L.lineCol); tex(5,RAMP_N*16,1,L.ramp);
-  gl.useProgram(prog); gl.uniform4fv(U.uMP,L.mp); }
-let prev=performance.now(), acc=0;
-function update(dt){
-  clock+=dt;
-  const Lp=loopLen(); const before=loopT; loopT=(loopT+dt)%Lp;
-  const f=frameAt(loopT);
-  const so=slamOffset(); if((before<so && loopT>=so) || (loopT<before && so<=loopT)){ lastSlamAt=clock; slam(); }
-  curFrame=f;
-  acc+=dt; const step=1/240; while(acc>step){ physics(step,f); acc-=step; }
-  if(S.lube>0) S.lube=Math.max(0,S.lube-dt); if(S.lubeCd>0) S.lubeCd=Math.max(0,S.lubeCd-dt);
-  setBtn('bLube','Lube',S.lube>0?'on':S.lubeCd>0?Math.ceil(S.lubeCd)+'s':'ready');
-}
-function render(now){
-  const dt=Math.max(0,Math.min(0.05,(now-prev)/1000)); prev=now;
-  update(dt); draw(now,dt);
-  if(!window.__manual) requestAnimationFrame(render);
-}
-function draw(now,dt){
-  const f=curFrame;
-  const flick=0.92+0.06*Math.sin(now*0.021)+0.04*Math.sin(now*0.067)+0.02*Math.sin(now*0.17);
-  const lp=(S.lampMode==='mouse'&&S.mouse)?S.mouse:[95+Math.sin(now*0.00033)*45, 22+Math.cos(now*0.00051)*16];
-  const fr=META.frames[f];
-  gl.useProgram(prog); gl.bindFramebuffer(gl.FRAMEBUFFER,fbo); gl.viewport(0,0,W,H);
-  gl.uniform1i(U.uFrame,f); gl.uniform4f(U.uLamp,lp[0],lp[1],80,1.5*flick);
-  gl.uniform4fv(U.uCheek,[PH.cheek[0].x[0],PH.cheek[0].x[1],Math.max(-0.5,Math.min(1,PH.cheek[0].x[1]*0.12)),0, PH.cheek[1].x[0],PH.cheek[1].x[1],Math.max(-0.5,Math.min(1,PH.cheek[1].x[1]*0.12)),0]);
-  const gap=fr.mode==='slap'?10.5:fr.mode==='mid'?9.5:9, drop=fr.mode==='slap'?1:fr.mode==='mid'?2:3;
-  gl.uniform4fv(U.uBall,[160-gap,fr.by+drop,PH.ball[0].x[0],PH.ball[0].x[1], 160+gap,fr.by,PH.ball[1].x[0],PH.ball[1].x[1]]);
-  gl.uniform4f(U.uSack,fr.sackTop,PH.ballSq[0],PH.ballSq[1],S.lube>0?1:0);
-  gl.uniform4f(U.uLeg,PH.leg[0].a,PH.leg[1].a,0,0);
-  gl.uniform4f(U.uGlute,PH.glute.x[0],PH.glute.x[1],fr.sackTop-21,PH.flush);
-  gl.uniform1f(U.uPixel,S.pixel?1:0); gl.uniform1f(U.uGray,S.gray?1:0); gl.uniform1f(U.uTime,now/1000);
-  gl.drawArrays(gl.TRIANGLES,0,3);
-  gl.useProgram(post); gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,W,H);
-  gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D,fboTex); gl.uniform1i(UP.uSrc,6);
-  gl.drawArrays(gl.TRIANGLES,0,3);
-  drawHUD(dt);
-}
-// --------------------------------------------------------------- controls ---
-const $=id=>document.getElementById(id);
-function setBtn(id,label,val){ const b=$(id); const s=label+' <b>'+val+'</b>'; if(b.innerHTML!==s) b.innerHTML=s; }
-$('bLight').onclick=()=>{ S.pixel=!S.pixel; setBtn('bLight','Shading',S.pixel?'pixel':'smooth'); };
-$('bPal').onclick=()=>{ S.gray=!S.gray; setBtn('bPal','Palette',S.gray?'grayscale':'color'); setLUTs(); };
-$('bLamp').onclick=()=>{ S.lampMode=S.lampMode==='wander'?'mouse':'wander'; setBtn('bLamp','Candle',S.lampMode==='mouse'?'follows pointer':'wander'); };
-$('bLube').onclick=()=>{ if(S.lubeCd>0) return; S.lube=10; S.lubeCd=25; };
-$('bSnd').onclick=()=>{ S.sound=!S.sound; if(S.sound&&!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ S.sound=false; } } setBtn('bSnd','Sound',S.sound?'on':'off'); };
-function tap(){ if(G.done){ nextLover(); return; } judgeTap(); }
-$('hud').addEventListener('pointerdown',e=>{ e.preventDefault(); tap(); });
-$('hud').addEventListener('pointermove',e=>{ const r=e.target.getBoundingClientRect(); S.mouse=[(e.clientX-r.left)/r.width*W,(e.clientY-r.top)/r.height*H]; });
-window.addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); tap(); } });
+// -------------------------------------------------------------- state ------
+const S={ pixel:false, gray:false, lamp:true, kinsey:3, lampPos:[230,40,46], mouse:null, cam:'close' };
+let META, rooms={};
+function setLUTs(){ const L=buildLUTs(S.gray); tex(3,256,1,L.lut); tex(4,256,1,L.lineCol); tex(5,RAMP_N*16,1,L.ramp); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, S.gray?rooms.gray:rooms.color); }
 async function boot(){
-  try{
-    boot3d();
-    const [mat,nrm,room,meta]=await Promise.all([loadImg(ASSETS.mat),loadImg(ASSETS.nrm),loadImg(ASSETS.room), typeof ASSETS.meta==='string'?fetch(ASSETS.meta).then(r=>r.json()):ASSETS.meta]);
-    META=meta;
-    tex(0,0,0,mat); tex(1,0,0,nrm); tex(2,0,0,room); setLUTs();
-    gl.useProgram(prog); gl.uniform1i(U.uMat,0); gl.uniform1i(U.uNrm,1); gl.uniform1i(U.uRoom,2); gl.uniform1i(U.uLut,3); gl.uniform1i(U.uLine,4); gl.uniform1i(U.uRamp,5);
-    window.__S=S; window.__G=G; window.__PH=PH; window.__render=render; window.__TONES=TONES; window.__setLUTs=setLUTs; window.__update=update; window.__draw=draw; window.__state=()=>({loopT,curFrame,clock}); window.__ready=true;
-    requestAnimationFrame(render);
-  }catch(e){ const el=$('err'); el.hidden=false; el.textContent=e.message; console.error(e); }
+  const [mat,nrm,rc,rg,meta]=await Promise.all([loadImg('game/sprites/press_close.mat.png'),loadImg('game/sprites/press_close.nrm.png'),
+    loadImg('game/sprites/room_color.png'),loadImg('game/sprites/room_gray.png'),fetch('game/sprites/press_close.json').then(r=>r.json()).catch(()=>null)]);
+  META=meta||{frames:[120,50,40,70,60,60,70,80].map(ms=>({ms}))};
+  tex(0,0,0,mat); tex(1,0,0,nrm); rooms.color=tex(2,0,0,rc); rooms.gray=tex(2,0,0,rg);
+  setLUTs();
+  gl.uniform1i(U('uMat'),0); gl.uniform1i(U('uNrm'),1); gl.uniform1i(U('uRoom'),2); gl.uniform1i(U('uLut'),3); gl.uniform1i(U('uLine'),4); gl.uniform1i(U('uRamp'),5);
+  requestAnimationFrame(loop);
 }
+// -------------------------------------------------------------- loop -------
+const hud=document.getElementById('hud'), hctx=hud.getContext('2d'), hbuf=new Uint8ClampedArray(320*180*4);
+const C={ink:[26,15,30],paper:[255,246,234],uiD:[43,27,51],uiM:[91,68,112],heart:[255,92,138],blush:[255,125,154],brow:[58,39,33]};
+let t0=performance.now(), score=0, combo=0;
+function frameAt(t){ const speed=1.6-(S.kinsey/6)*0.85, F=META.frames, total=F.reduce((a,f)=>a+f.ms,0)/speed; let x=(t%total), i=0; while(i<F.length-1 && x>=F[i].ms/speed){ x-=F[i].ms/speed; i++; } return {i, total, speed}; }
+function loop(now){
+  const t=now-t0, {i,total}=frameAt(t);
+  // the lamp: a candle that wanders on its own, or follows the mouse
+  const flick=0.92+0.08*Math.sin(now*0.023)+0.05*Math.sin(now*0.071);
+  const lp=S.mouse||[230+Math.sin(now*0.0004)*30, 40+Math.cos(now*0.0005)*10];
+  gl.uniform1i(U('uFrame'),i); gl.uniform3f(U('uLamp'),lp[0],lp[1],46); gl.uniform1f(U('uLampOn'),S.lamp?flick:0); gl.uniform1f(U('uPixel'),S.pixel?1:0); gl.uniform1f(U('uTime'),now/1000);
+  gl.viewport(0,0,320,180); gl.drawArrays(gl.TRIANGLES,0,3);
+  // HUD
+  hbuf.fill(0); const c=new Canvas2(hbuf,320,180);
+  const phaseToHit=((t%total)/total);
+  const hitAt=(META.frames.slice(0,3).reduce((a,f)=>a+f.ms,0))/(META.frames.reduce((a,f)=>a+f.ms,0));
+  let d=hitAt-phaseToHit; if(d<0) d+=1;
+  UI.rhythm(c,160,96,d<0.7?d/0.7:0,C,(d>0.93||d<0.03)?'PERFECT!':null);
+  if(i===3||i===4) c.textOutlined('PLAP!',186,70,C.paper,C.ink);
+  UI.hud(c,{score:Math.floor(t/40),hearts:3,combo:[Math.floor(t/400)%2000,Math.floor(t/1000)%99],kinsey:S.kinsey,toolHot:-1},C);
+  const lines=UI.LINES[S.kinsey]||UI.LINES[3]; UI.speech(c,6,150,lines[Math.floor(t/3500)%lines.length],C);
+  hctx.putImageData(new ImageData(hbuf,320,180),0,0);
+  requestAnimationFrame(loop);
+}
+// ------------------------------------------------------------ controls -----
+const $=id=>document.getElementById(id);
+$('bLight').onclick=()=>{ S.pixel=!S.pixel; $('bLight').textContent='Lighting: '+(S.pixel?'pixel bands':'smooth'); };
+$('bPal').onclick=()=>{ S.gray=!S.gray; $('bPal').textContent='Palette: '+(S.gray?'grayscale':'color'); setLUTs(); };
+$('bLamp').onclick=()=>{ S.lamp=!S.lamp; $('bLamp').classList.toggle('on',S.lamp); $('bLamp').textContent='Lamp: '+(S.lamp?'on (move mouse)':'off'); };
+$('bCam').onclick=()=>{ $('bCam').textContent='Camera: close (wide set in progress)'; };
+$('kin').oninput=e=>{ S.kinsey=+e.target.value; $('kv').textContent=S.kinsey; };
+$('hud').onmousemove=e=>{ const r=e.target.getBoundingClientRect(); S.mouse=[(e.clientX-r.left)/r.width*320,(e.clientY-r.top)/r.height*180]; };
+$('hud').onmouseleave=()=>{ S.mouse=null; };
+window.__S=S;
 boot();
 </script>
-<!--ARTIFACT-END-->
 </body>
 </html>

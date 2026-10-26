@@ -7,18 +7,16 @@ include("cbase.px.js")
 // Each body part is drawn on its own layer, outlined there (sel-out style), then
 // composited in depth order. Light comes from the upper left everywhere.
 class Layer {
-  // ht = height toward the viewer (px). cz/cr: base height and radius of the shape being drawn,
-  // so a lit pixel's height follows its normal (cz + nz * cr)
-  constructor(w = 320, h = 180) { this.w = w; this.h = h; this.k = new Array(w * h).fill("."); this.n = new Float32Array(w * h * 3); this.fl = new Uint8Array(w * h); this.ht = new Float32Array(w * h); this.cz = 0; this.cr = 8 }
+  constructor(w = 320, h = 180) { this.w = w; this.h = h; this.k = new Array(w * h).fill("."); this.n = new Float32Array(w * h * 3); this.fl = new Uint8Array(w * h) }
   in(x, y) { return x >= 0 && y >= 0 && x < this.w && y < this.h }
   get(x, y) { return this.in(x, y) ? this.k[y * this.w + x] : "." }
   // n = surface normal [x, y(down), z(toward viewer)] for lit pixels; without one, a pixel that already
   // exists becomes a hand-drawn crease/detail (keeps the surface normal, flag 2); fl 1 = outline
   set(x, y, k, n, flag) { x = Math.round(x); y = Math.round(y); if (!this.in(x, y)) return; const i = y * this.w + x
-    if (n) { const l = Math.hypot(n[0], n[1], n[2]) || 1; this.n[i * 3] = n[0] / l; this.n[i * 3 + 1] = n[1] / l; this.n[i * 3 + 2] = n[2] / l; this.fl[i] = flag || 0; this.ht[i] = this.cz + (n[2] / l) * this.cr }
+    if (n) { const l = Math.hypot(n[0], n[1], n[2]) || 1; this.n[i * 3] = n[0] / l; this.n[i * 3 + 1] = n[1] / l; this.n[i * 3 + 2] = n[2] / l; this.fl[i] = flag || 0 }
     else if (flag !== undefined) this.fl[i] = flag
     else if (this.k[i] !== ".") this.fl[i] = this.fl[i] === 1 ? 1 : 2
-    else { this.n[i * 3 + 2] = 1; this.fl[i] = 2; this.ht[i] = this.cz }
+    else { this.n[i * 3 + 2] = 1; this.fl[i] = 2 }
     this.k[i] = k }
   opaque(x, y) { return this.get(x, y) !== "." }
   each(fn) { for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) if (this.opaque(x, y)) fn(x, y, this.get(x, y)) }
@@ -29,10 +27,10 @@ class Layer {
       if (this.opaque(x, y) || skip(x, y)) continue
       for (const [dx, dy] of [[0, 1], [0, -1], [-1, 0], [1, 0]]) {
         const n = this.get(x + dx, y + dy); if (n === ".") continue
-        pts.push([x, y, dark[n] || dark._, this.ht[(y + dy) * this.w + x + dx]]); break
+        pts.push([x, y, dark[n] || dark._]); break
       }
     }
-    for (const [x, y, k, h] of pts) { this.set(x, y, k, [0, 0, 1], 1); this.ht[y * this.w + x] = h - 1 }
+    for (const [x, y, k] of pts) this.set(x, y, k, [0, 0, 1], 1)
     return this
   }
   // drop 1px L-corners in outlines so curves step cleanly
@@ -47,13 +45,13 @@ class Layer {
     }
     return this
   }
-  over(dst) { for (let i = 0; i < this.k.length; i++) if (this.k[i] !== ".") { dst.k[i] = this.k[i]; dst.fl[i] = this.fl[i]; dst.n[i * 3] = this.n[i * 3]; dst.n[i * 3 + 1] = this.n[i * 3 + 1]; dst.n[i * 3 + 2] = this.n[i * 3 + 2]; dst.ht[i] = this.ht[i] } return dst }
+  over(dst) { for (let i = 0; i < this.k.length; i++) if (this.k[i] !== ".") { dst.k[i] = this.k[i]; dst.fl[i] = this.fl[i]; dst.n[i * 3] = this.n[i * 3]; dst.n[i * 3 + 1] = this.n[i * 3 + 1]; dst.n[i * 3 + 2] = this.n[i * 3 + 2] } return dst }
 }
 const inEll = (x, y, cx, cy, rx, ry) => ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 1
 
 // round form: rim (shadow side), base, lit (offset toward the light), highlight
 function orb(L, cx, cy, rx, ry, keys, clip) {
-  const [rim, base, lit, hi] = keys, cr0 = L.cr; L.cr = Math.min(rx, ry) * 0.9
+  const [rim, base, lit, hi] = keys
   for (let y = Math.floor(cy - ry); y <= cy + ry; y++) for (let x = Math.floor(cx - rx); x <= cx + rx; x++) {
     if (!inEll(x, y, cx, cy, rx, ry) || (clip && !clip(x, y))) continue
     let k = base
@@ -63,7 +61,6 @@ function orb(L, cx, cy, rx, ry, keys, clip) {
     const u = (x + 0.5 - cx) / rx, v = (y + 0.5 - cy) / ry
     L.set(x, y, k, [u, v, Math.sqrt(Math.max(0.04, 1 - u * u - v * v))])
   }
-  L.cr = cr0
 }
 // tapered limb from (x0,y0,r0) to (x1,y1,r1): lit side faces up-left, shadow side down-right
 function limb(L, x0, y0, r0, x1, y1, r1, keys, clip) {
@@ -104,7 +101,7 @@ function herLegs(dst) {
   L.outline(HER_D).over(dst)
 }
 function herAss(dst, jig) {
-  const L = new Layer(); L.cz = 22; L.cr = 26
+  const L = new Layer()
   const sq = jig * 2.2   // ripple after the slam: cheeks spread and drop a touch
   for (const s of [-1, 1]) {
     const cx = 160 + s * (24 + sq * 0.4), cy = 111 + sq * 0.5
@@ -135,7 +132,7 @@ function asshole(dst) {
 // Seen from behind/above, the slit runs up the screen. Skin-coloured outer lips form an almond
 // around the shaft and melt into her inner cheeks; pink only on the inner surfaces.
 function pussy(dst, drag, shaftIn) {
-  const L = new Layer(), cx = 160, cy = 96; L.cz = 30; L.cr = 6
+  const L = new Layer(), cx = 160, cy = 96
   // the almond: outer lips (labia majora), skin with a flush, parted around the shaft
   for (const s of [-1, 1]) orb(L, cx + s * 9.5, cy - 6, 6.5, 13.5, s < 0 ? ["f", "g", "h", "i"] : ["f", "g", "g", "h"])
   orb(L, cx, cy + 3, 11, 5, ["f", "g", "g", null], (x, y) => y >= cy + 1)             // the back corner where they join
@@ -197,7 +194,7 @@ function hisAss(dst, dy, clench) {
 // --------------------------------------------------------- cock + balls ----
 function shaft(dst, top, bot) {
   if (bot <= top) return
-  const L = new Layer(); L.cz = 36; L.cr = 7
+  const L = new Layer()
   const prof = "GHHIIIIHHHGGFF"                      // 14px cylinder, lit from the left
   for (let y = top; y <= bot; y++) {
     const flare = y < top + 3 ? 1 : 0                // a slight flare at the base under the sack
@@ -212,7 +209,7 @@ function shaft(dst, top, bot) {
 // one loose sack with two testicle bulges, the left hanging lower; the seam continues
 // up out of his taint; folds (rugae) wrap around each testicle
 function sack(dst, cx, cy, mode) {
-  const L = new Layer(); L.cz = 44; L.cr = 10
+  const L = new Layer()
   const p = mode === "slap" ? { r: 11.5, ry: 9, gap: 10.5, nw: 7, drop: 1 } : mode === "mid" ? { r: 10.5, ry: 11.5, gap: 9.5, nw: 6, drop: 2 } : { r: 10, ry: 12.5, gap: 9, nw: 5, drop: 3 }
   const top = cy - p.ry - 8
   // neck: loose skin rising into the taint, widening as it fills with the two balls
@@ -285,7 +282,7 @@ function reshade(base, out, keys, ramp, hi) {
     let k = t < 0.22 ? ramp[3] : t < 0.46 ? ramp[2] : t < 0.70 ? ramp[1] : ramp[0]
     if (hi && t < 0.10 && TH[i] > 12) k = hi
     const gx = (Hh(x + 1, y, i) - Hh(x - 1, y, i)) / 2, gy = (Hh(x, y + 1, i) - Hh(x, y - 1, i)) / 2
-    out.set(x, y, k, [-gx, -gy, 1.4]); out.ht[i] = out.cz + Math.sqrt(Math.min(D[i], 18)) * 2.2 }
+    out.set(x, y, k, [-gx, -gy, 1.4]) }
   // smooth the normals inside each region (the distance field is faceted)
   for (let pass = 0; pass < 3; pass++) { const n2 = out.n.slice()
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (id[i] < 0) continue; let sx = 0, sy = 0, sz = 0
@@ -293,116 +290,74 @@ function reshade(base, out, keys, ramp, hi) {
       const l = Math.hypot(sx, sy, sz) || 1; n2[i * 3] = sx / l; n2[i * 3 + 1] = sy / l; n2[i * 3 + 2] = sz / l }
     out.n.set(n2) }
 }
-// ------------------------------------------------------------- sculpting ---
-// Soft 2D masses that melt into each other. Every part is a shape with a base height (z)
-// and a rounding radius (r); the silhouette is their smooth union, the height their
-// smooth max, and the normals come from that height. Lets a glute sit ON a thigh
-// (a real fold) and a hip flow into a leg without seams.
-const sm = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25 }
-const sx = (a, b, k) => -sm(-a, -b, k)
-const dEll = (cx, cy, rx, ry) => (x, y) => (Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * Math.min(rx, ry)
-const dCap = (x0, y0, r0, x1, y1, r1) => (x, y) => {
-  const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy
-  const t = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / l2))
-  return Math.hypot(x - x0 - dx * t, y - y0 - dy * t) - (r0 + (r1 - r0) * t) }
-function sculpt(parts, keys, light = [-0.55, -0.62, 0.58]) {
-  const W = 320, H = 180, h = new Float32Array(W * H).fill(-1e9), grp = new Int8Array(W * H).fill(-1)
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const px = x + 0.5, py = y + 0.5
-    let D = 1e9, best = -1e9, bg = -1, hh = -1e9
-    for (const p of parts) {
-      const d = p.d(px, py); D = sm(D, d, p.k ?? 5)
-      const s = -d, hi = s > 0 ? p.z + (s >= p.r ? p.r : Math.sqrt(s * (2 * p.r - s))) : p.z + s * 1.4
-      hh = hh === -1e9 ? hi : sx(hh, hi, p.blend ?? 3)
-      if (hi > best) { best = hi; bg = p.g }
-    }
-    if (D > 0) continue
-    h[y * W + x] = hh; grp[y * W + x] = bg
-  }
-  const out = [new Layer(), new Layer()]
-  const N = new Float32Array(W * H * 3)
-  const at = (x, y, i) => { const j = y * W + x; return x < 0 || y < 0 || x >= W || y >= H || grp[j] < 0 ? h[i] - 3 : h[j] }
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (grp[i] < 0) continue
-    const gx = (at(x + 1, y, i) - at(x - 1, y, i)) / 2, gy = (at(x, y + 1, i) - at(x, y - 1, i)) / 2
-    const l = Math.hypot(gx, gy, 1); N[i * 3] = -gx / l; N[i * 3 + 1] = -gy / l; N[i * 3 + 2] = 1 / l }
-  for (let pass = 0; pass < 2; pass++) { const N2 = N.slice()
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (grp[i] < 0) continue; let a = 0, b = 0, c = 0
-      for (let yy = -1; yy <= 1; yy++) for (let xx = -1; xx <= 1; xx++) { const X = x + xx, Y = y + yy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const j = Y * W + X; if (grp[j] < 0 || Math.abs(h[j] - h[i]) > 4) continue; a += N[j * 3]; b += N[j * 3 + 1]; c += N[j * 3 + 2] }
-      const l = Math.hypot(a, b, c) || 1; N2[i * 3] = a / l; N2[i * 3 + 1] = b / l; N2[i * 3 + 2] = c / l }
-    N.set(N2) }
-  // no slivers: a pixel whose group is a thin fringe joins the group around it
-  for (let pass = 0; pass < 3; pass++) for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; if (grp[i] < 0) continue
-    let same = 0, other = -1; for (let yy = -1; yy <= 1; yy++) for (let xx = -1; xx <= 1; xx++) { if (!xx && !yy) continue; const g = grp[(y + yy) * W + x + xx]; if (g === grp[i]) same++; else if (g >= 0) other = g }
-    if (same < 4 && other >= 0) grp[i] = other }
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (grp[i] < 0) continue
-    const n = [N[i * 3], N[i * 3 + 1], N[i * 3 + 2]], dl = n[0] * light[0] + n[1] * light[1] + n[2] * light[2]
-    const k = dl > 0.78 ? keys[3] : dl > 0.55 ? keys[2] : dl > 0.25 ? keys[1] : keys[0]
-    const L = out[grp[i]]; L.set(x, y, k, n); L.ht[i] = h[i] }
-  return out
-}
-// his lower body, drawn as masses: back, flanks, glutes (heavy, squared off low and
-// inside, flatter at the outer hip), the taint, thighs, calves, heels.
-// returns [legs, torso] so her ass can sit between them in depth
-function hisBody(dy, sackTop, clench) {
-  const P = []
-  const g0 = 0, g1 = 1                                   // 0 legs, 1 torso
-  P.push({ d: dCap(160, -50 + dy, 46, 160, 22 + dy, 38), z: 16, r: 32, g: g1, k: 8 })                       // lower back
-  for (const s of [-1, 1]) {
-    const a = s > 0 ? 0.8 : 0                                                                               // a touch of asymmetry
-    P.push({ d: dEll(160 + s * 31, 18 + dy, 10, 18), z: 24, r: 12, g: g1, k: 9 })                           // flank into the hip
-    P.push({ d: dEll(160 + s * 18.5, 32 + dy + a, 20.5 - clench, 19.5), z: 30, r: 26, g: g1, k: 6, blend: 9 })  // glute, upper mass (melts up into the back)
-    P.push({ d: dEll(160 + s * 12.5, 44 + dy + a, 13.5 - clench * 0.5, 8.5), z: 38, r: 15, g: g1, k: 7, blend: 5 }) // heavy low inner corner
-    P.push({ d: dEll(160 + s * 29, 32 + dy, 8, 13), z: 30, r: 10, g: g1, k: 8 })                            // outer side, flatter
-    const hx = 160 + s * 27, hy = 42 + dy, kx = 160 + s * 72, ky = 84 + dy * 0.4
-    P.push({ d: dCap(hx, hy, 17, kx, ky, 12.5), z: 12, r: 17, g: g0, k: 7 })                                 // thigh
-    P.push({ d: dEll(hx + (kx - hx) * 0.45, hy + (ky - hy) * 0.45 + 2, 15, 13), z: 14, r: 14, g: g0, k: 8 }) // hamstring mass
-    P.push({ d: dCap(kx, ky, 11.5, 160 + s * 73, 158, 6.5), z: 6, r: 12, g: g0, k: 5 })                      // shin
-    P.push({ d: dEll(160 + s * 74.5, 110, 11.5, 18), z: 9, r: 12, g: g0, k: 6 })                             // calf
-    P.push({ d: dEll(160 + s * 73, 166, 8, 7), z: 12, r: 8, g: g0, k: 4 })                                   // heel / sole
-  }
-  P.push({ d: dCap(160, 40 + dy, 4.5, 160, sackTop + 3, 6), z: 33, r: 6, g: g1, k: 5, blend: 4 })            // taint
-  const [legs, torso] = sculpt(P, HIS)
-  legs.outline(HIM_D).clean(["O"]); torso.outline(HIM_D, (x, y) => y > sackTop - 4 && Math.abs(x - 160) < 9).clean(["O"])
-  return [legs, torso]
-}
 // ------------------------------------------------------------------ frames -
-// per keyframe from the 3D reference: his hip drop (root), sack centre (by), out (pull-back)
+// per keyframe from the 3D reference: his hip drop (dy), sack centre, out (pull-back), her ripple
 const R = [
-  { root: 53.7, by: 68, out: 1.00, mode: "hang", ms: 120 },
-  { root: 61.3, by: 75, out: 0.80, mode: "hang", ms: 50 },
-  { root: 74.2, by: 86, out: 0.46, mode: "mid", ms: 40 },
-  { root: 90.7, by: 103, out: 0.00, mode: "slap", ms: 70 },
-  { root: 87.2, by: 100, out: 0.10, mode: "slap", ms: 60 },
-  { root: 83.4, by: 95, out: 0.20, mode: "mid", ms: 60 },
-  { root: 74.7, by: 87, out: 0.44, mode: "mid", ms: 70 },
-  { root: 64.0, by: 77, out: 0.73, mode: "hang", ms: 80 },
+  { root: 53.7, by: 68, out: 1.00, jig: 0.00, mode: "hang", ms: 120 },
+  { root: 61.3, by: 75, out: 0.80, jig: -0.04, mode: "hang", ms: 50 },
+  { root: 74.2, by: 86, out: 0.46, jig: -0.04, mode: "mid", ms: 40 },
+  { root: 90.7, by: 103, out: 0.00, jig: 0.00, mode: "slap", ms: 70 },
+  { root: 87.2, by: 100, out: 0.10, jig: 0.59, mode: "slap", ms: 60 },
+  { root: 83.4, by: 95, out: 0.20, jig: 0.80, mode: "mid", ms: 60 },
+  { root: 74.7, by: 87, out: 0.44, jig: -0.19, mode: "mid", ms: 70 },
+  { root: 64.0, by: 77, out: 0.73, jig: 0.03, mode: "hang", ms: 80 },
 ]
-// Each frame is five depth layers so the game can move parts on their own (physics):
-// 0 her legs, 1 his legs, 2 her ass + pussy + shaft, 3 his back/glutes/taint, 4 his sack
 function drawFrame(r, c, f) {
-  const B = new Layer(); for (let y = 0; y < 180; y++) for (let x = 0; x < 320; x++) { const k = c.key(x, y); if (k && "abcdenlL".includes(k)) B.set(x, y, k) }
-  const L0 = new Layer(); L0.cz = 2
-  reshade(B, L0, "abcdenlL", ["a", "b", "c", "d"], "e")
-  L0.each((x, y, k) => { if (B.get(x, y) === "n" || (y < 72 && "abcd".includes(k) && Math.abs(x - 160) > 22 && ((x + y) % 4 === 0 || (x - y + 400) % 4 === 0))) L0.set(x, y, k === "d" || k === "c" ? "n" : "o") })
-  L0.outline(HER_D).clean(["o"])
-  const sackTop = r.by - (r.mode === "slap" ? 11 : 15), dy = sackTop - 53, clench = r.out < 0.15 ? 1 : 0
-  const [L1, L3] = hisBody(dy, sackTop, clench)
-  const L2 = new Layer()
-  herAss(L2, 0)
-  asshole(L2)
+  const B = new Layer(); for (let y = 0; y < 180; y++) for (let x = 0; x < 320; x++) { const k = c.key(x, y); if (k && k !== ".") B.set(x, y, k) }
+  const F = new Layer(); B.over(F)
+  const dy = Math.round(r.root - 53.7)
+  reshade(B, F, "abcdenlL", ["a", "b", "c", "d"], "e")
+  reshade(B, F, "ABCDEWXYZ", ["A", "B", "C", "D"], "E")
+  // fishnet back on her stocking area
+  F.each((x, y, k) => { if (B.get(x, y) === "n" || (y < 72 && "abcd".includes(k) && Math.abs(x - 160) > 22 && ((x + y) % 4 === 0 || (x - y + 400) % 4 === 0))) F.set(x, y, k === "d" || k === "c" ? "n" : "o") })
+  // her ass: fuller and rounder than the model, drawn over its own region
+  const A = new Layer(); herAss(A, r.jig)
+  A.each((x, y, k) => { if (B.get(x, y) !== "." && "ABCDEOWXYZ".includes(B.get(x, y))) return; const i = y * 320 + x; F.set(x, y, k, [A.n[i * 3], A.n[i * 3 + 1], A.n[i * 3 + 2]], A.fl[i]) })
+  asshole(F)
   const drag = Math.round(r.out * 6)
-  pussy(L2, drag, true)
-  shaft(L2, sackTop - 2, 96 + Math.round(drag / 2) - 1)
-  { const ry = 2 + Math.round(drag / 2); L2.cz = 40; L2.cr = 2
-    for (let x = -8; x <= 8; x++) { const t = 1 - (x / 8.5) ** 2; if (t < 0) continue; const yb = 96 + Math.round(Math.sqrt(t) * ry); L2.set(160 + x, yb, "j", [x / 10, 0.6, 0.8]); L2.set(160 + x, yb - 1, x < -1 ? "m" : "k", [x / 10, 0.5, 0.85]) } }
-  const L4 = new Layer()
-  sack(L4, 160, r.by, r.mode)
-  const layers = [L0, L1, L2, L3, L4]
-  const F = new Layer(); layers.forEach((L) => L.over(F))
-  F.layers = layers; F.anchor = { sackTop, by: r.by, dy }
+  pussy(F, drag, true)
+  const ballTop = r.by - (r.mode === "slap" ? 11 : 15)
+  shaft(F, ballTop, 96 + Math.round(drag / 2) - 1)
+  const ry = 2 + Math.round(drag / 2)
+  for (let x = -8; x <= 8; x++) { const t = 1 - (x / 8.5) ** 2; if (t < 0) continue; const yb = 96 + Math.round(Math.sqrt(t) * ry); F.set(160 + x, yb, "j"); F.set(160 + x, yb - 1, x < -1 ? "m" : "k") }
+  // his crack, dimples and taint drawn by hand over the reference body
+  hisDetails(F, B, ballTop, r.out < 0.15 ? 1 : 0)
+  sack(F, 160, r.by, r.mode)
   return F
 }
-// pxl preview only (the game reads the layers through tools/build_lit.js)
+function hisDetails(F, B, sackTop, clench) {
+  const isHim = (k) => "ABCDEO".includes(k) && k !== "."
+  // drop leftover crease marks from the reference inside his body (keep his silhouette lines)
+  for (let y = 1; y < 179; y++) for (let x = 1; x < 319; x++) if (F.get(x, y) === "O") {
+    const n = [F.get(x - 1, y), F.get(x + 1, y), F.get(x, y - 1), F.get(x, y + 1)]
+    if (n.every((k) => isHim(k))) F.set(x, y, n.filter((k) => k !== "O")[0] || "B")
+  }
+  // glutes: two firm round masses ending right where the taint starts
+  const G = new Layer(), gy = sackTop - 19, gx = 18 - clench * 1.5
+  for (const s of [-1, 1]) {
+    const cx = 160 + s * gx, rx = 20 - clench, ry = 20
+    for (let y = Math.floor(gy - ry); y <= gy + ry; y++) for (let x = Math.floor(cx - rx); x <= cx + rx; x++) {
+      if ((s < 0 ? x > 160 : x < 160) || !isHim(B.get(x, y))) continue
+      if (((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - gy) / ry) ** 2 > 1) continue
+      const d = Math.hypot((x + 0.5 - (cx - rx * 0.32)) / rx, (y + 0.5 - (gy - ry * 0.34)) / ry)
+      let k = d < 0.62 ? "D" : d < 0.98 ? "C" : d < 1.28 ? "B" : "A"
+      if (Math.abs(x - 160) < 3) k = k === "D" ? "C" : "B"
+      { const a = Math.atan2(y + 0.5 - gy, x + 0.5 - cx), rr = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - gy) / ry); if (!clench && rr > 0.70 && rr < 0.84 && a > -2.6 && a < -1.9) k = "E" }   // thin rim sheen, upper left
+      const nu = (x + 0.5 - cx) / rx, nv = (y + 0.5 - gy) / ry
+      G.set(x, y, k, [nu, nv, Math.sqrt(Math.max(0.05, 1 - nu * nu - nv * nv))])
+    }
+  }
+  // lower edge of each glute: a fold line where it meets the back of the thigh
+  for (const s of [-1, 1]) for (let x = 3; x <= 19; x++) { const t = x / 19, y = Math.round(gy + 19 - 3 * t * t + (t < 0.2 ? (0.2 - t) * 10 : 0)); if (isHim(B.get(160 + s * x, y))) G.set(160 + s * x, y, "O") }
+  G.over(F)
+  if (clench) for (const s of [-1, 1]) for (let i = 0; i < 5; i++) F.set(160 + s * (gx + 17), gy - 2 + i, "B")   // hollow on the clench
+  // crack, straight down into the taint
+  for (let y = gy - 17; y <= sackTop - 3; y++) { F.set(160, y, "A"); if (y > gy - 12) F.set(161, y, "B") }
+  // taint: a short smooth bridge of skin between the glutes and the sack, seam running through
+  for (let y = sackTop - 5; y <= sackTop + 2; y++) for (let x = 153; x <= 167; x++) { const w = 4 + (y - sackTop + 5) * 0.6; if (Math.abs(x - 160) > w) continue; const u = (x - 160) / (w + 1); F.set(x, y, x < 157 ? "C" : x > 163 ? "A" : "B", [u, 0.2, Math.sqrt(Math.max(0.05, 1 - u * u))]) }
+  for (let y = sackTop - 5; y <= sackTop + 2; y++) F.set(160, y, "A")
+  for (let x = -5; x <= 5; x++) if (Math.abs(x) > 2) F.set(160 + x, sackTop - 5 + Math.round(Math.abs(x) * 0.3), "O")
+}
 anim("press_close", { w: 320, h: 180 }, ...R.map((r, f) => frame({ ms: r.ms }, stamp(`_cbase${f}`, 0, 0), (c) => {
   const F = drawFrame(r, c, f)
   for (let y = 0; y < 180; y++) for (let x = 0; x < 320; x++) { const k = F.get(x, y); if (k !== ".") c.px(x, y, k) }
