@@ -27,6 +27,7 @@
   if (q.get('palette')) app.palette = q.get('palette');
   if (q.get('pos')) { D.pos = q.get('pos'); }
   if (q.get('speed')) D.userSpeed = parseFloat(q.get('speed'));
+  if (q.get('stroke')) D.stroke = parseFloat(q.get('stroke'));
   if (q.get('arousal')) S.w.arousal = S.m.arousal = parseFloat(q.get('arousal'));
   if (q.get('seed') === 'rand') PD.randomize(S);
   if (q.get('gate') === '0') document.getElementById('gate').remove();

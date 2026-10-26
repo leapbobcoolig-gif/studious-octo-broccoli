@@ -331,38 +331,73 @@
         dirv = norm(sub(add(tip, o), pn.B));
       } else sp.shaft.reset();
       const vis = Math.max(0, Math.min(pn.L, pn.vis));
-      const pr = [cap(ma(pn.B, dirv, -1.5), ma(pn.B, dirv, vis), g, g * 0.94)];
+      const sideV = perpToward(dirv, T.u); // dorsal side (toward his belly)
+      // shaft: thick root that tapers, slight upward curve when free
+      const mid = ma(pn.B, dirv, Math.min(vis, pn.L * 0.55));
+      const curl = free ? ma(dirv, sideV, 0.12) : dirv;
+      const end = ma(mid, norm(curl), Math.max(0, vis - pn.L * 0.55));
+      const pr = [
+        ell(ma(pn.B, dirv, -0.5), g * 1.5, g * 1.35, ang(dirv)),
+        cap(ma(pn.B, dirv, -1.5), mid, g * 1.1, g * 0.98),
+      ];
+      if (vis > pn.L * 0.55) pr.push(cap(mid, end, g * 0.98, g * 0.92));
       const pp = [];
+      let tipDir = norm(curl);
       if (free) {
-        const gc = ma(pn.B, dirv, pn.L - 1.2);
-        pr.push(ell(gc, 2.4 * g / 1.95, g * 1.12, ang(dirv)));
-        pp.push({ prims: [ell(gc, 2.5 * g / 1.95, g * 1.3, ang(dirv))], ramp: skinRamp(c), map: FLESH,
-          clips: [{ pt: ma(pn.B, dirv, pn.L - 2.6), n: dirv }] });
+        // glans: wider than the shaft at the corona, rounded tip, flesh-pink
+        const gc = ma(end, tipDir, -1.6 * g / 1.95);
+        pr.push(ell(gc, 2.5 * g / 1.95, g * 1.18, ang(tipDir)));
+        pr.push(ell(ma(gc, tipDir, -1.3 * g / 1.95), 0.9, g * 1.24, ang(tipDir)));
+        pp.push({ prims: [ell(gc, 3.2 * g / 1.95, g * 1.5, ang(tipDir))], ramp: skinRamp(c), map: FLESH,
+          clips: [{ pt: ma(gc, tipDir, -1.6 * g / 1.95), n: tipDir }] });
       }
-      const sideV = perpToward(dirv, T.u);
       G.penis = {
-        prims: pr, ramp: skinRamp(c), k: 1.2, paints: pp,
+        prims: pr, ramp: skinRamp(c), k: 1.0, paints: pp,
+        softRoots: [{ pt: pn.B, r: g * 2.4 }],
         decal: (fb) => {
           const sk2 = skinRamp(c) * 6;
-          for (let t = 0.25; t < Math.min(vis / pn.L, 0.75); t += 0.18) {
-            const q = ma(ma(pn.B, dirv, pn.L * t), sideV, g * 0.35 * Math.sin(t * 17));
+          // dorsal vein running along the top of the shaft
+          for (let t = 0.2; t < Math.min(vis / pn.L, 0.7); t += 0.09) {
+            const q = ma(ma(pn.B, dirv, pn.L * t), sideV, g * (0.55 + 0.15 * Math.sin(t * 20)));
             fb.px(q.x, q.y, sk2 + 1);
           }
-          if (st && st.wet > 0.2) for (let t = 0.15; t < vis / pn.L; t += 0.22) {
-            const q = ma(ma(pn.B, dirv, pn.L * t), sideV, g * 0.6);
+          if (free) {
+            const tip = ma(end, tipDir, 0.6);
+            fb.px(tip.x, tip.y, sk2 + 1); // meatus
+            const cr = ma(ma(end, tipDir, -2.9 * g / 1.95), sideV, -g * 0.9);
+            fb.px(cr.x, cr.y, sk2 + 0); // corona shadow under the rim
+          }
+          if (st && st.wet > 0.2) for (let t = 0.15; t < vis / pn.L; t += 0.18) {
+            const q = ma(ma(pn.B, dirv, pn.L * t), sideV, g * 0.75);
             if (PD.bayer(Math.round(q.x), Math.round(q.y)) < st.wet) fb.px(q.x, q.y, sk2 + 4);
           }
         },
       };
-      const bA = L(-6.2 * s, 3.4 * s);
+      // scrotum: one sack hanging from the base, left/right testicles, wrinkled
+      const root = L(-5.6 * s, 4.2 * s);
+      const bA = L(-7.2 * s, 3.2 * s);
       const bo = sp.balls.step(bA, dt, Math.sqrt(p.girth));
       anchors.balls = { pt: bA, sp: sp.balls };
-      const rb = 3.2 * s * Math.sqrt(p.girth);
-      const se = softEll(add(bA, bo), rb, bo, T.f, 0.35);
+      const rb = 3.0 * s * Math.sqrt(p.girth);
+      const bc = add(bA, bo);
+      const se = softEll(bc, rb, bo, T.f, 0.35);
+      const hang = len(bo) > 0.05 ? norm(bo) : { x: 0, y: 1 };
       G.balls = {
-        prims: [ell(ma(ma(se.c, T.f, 1.2), T.u, 0.4), se.rx * 0.92, se.ry * 0.92, se.a), ell(se.c, se.rx, se.ry, se.a)],
-        ramp: skinRamp(c), k: 1.4, bias: -0.4,
-        paints: [{ prims: [ell(ma(se.c, T.u, rb * 0.6), rb * 0.9, rb * 0.7, se.a)], ramp: hairRamp(c), pat: (x, y) => PD.bayer(x, y) < 0.18 }],
+        prims: [
+          cap(root, bc, rb * 0.75, rb * 0.85),
+          ell(ma(bc, T.f, 1.1 * s), se.rx * 0.9, se.ry * 0.9, se.a),
+          ell(ma(bc, hang, 0.8 * s), se.rx, se.ry, se.a),
+        ],
+        ramp: skinRamp(c), k: 1.8, bias: -0.3,
+        softRoots: [{ pt: root, r: rb * 1.1 }],
+        paints: [{ prims: [cap(root, bc, rb * 0.9, rb * 0.6)], ramp: hairRamp(c), pat: (x, y) => PD.bayer(x, y) < 0.14 }],
+        decal: (fb) => {
+          const sk2 = skinRamp(c) * 6;
+          const lo = ma(bc, hang, rb * 0.6);
+          fb.px(lo.x, lo.y, sk2 + 1); // raphe / crease between the testicles
+          const w1 = ma(ma(bc, T.f, rb * 0.5), hang, rb * 0.2); fb.px(w1.x, w1.y, sk2 + 1);
+          const w2 = ma(ma(bc, T.f, -rb * 0.4), hang, -rb * 0.1); fb.px(w2.x, w2.y, sk2 + 1);
+        },
       };
     }
     if (f && sk.E) {

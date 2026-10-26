@@ -152,8 +152,8 @@
   // Her near leg goes *behind* the shaft so the shaft stays on show in profile.
   // Rule for every position: the shaft is drawn right before her body, so her body and
   // legs always cover it; visibility comes from posing, never from draw-order cheats.
-  const ORDER_RIDE = ['m.hairBack', 'm.farArm', 'm.farLeg', 'w.farLeg', 'm.body', 'm.face', 'm.hairFront', 'm.nearLeg',
-    'w.farArm', 'w.hairBack', 'm.balls', 'm.penis', 'w.body', 'w.vulva', 'w.face', 'w.breast',
+  const ORDER_RIDE = ['m.hairBack', 'm.farArm', 'm.farLeg', 'w.farLeg', 'm.body', 'm.face', 'm.hairFront',
+    'w.farArm', 'w.hairBack', 'm.balls', 'm.penis', 'm.nearLeg', 'w.body', 'w.vulva', 'w.face', 'w.breast',
     'w.nearArm', 'w.hairFront', 'w.nearLeg', 'm.nearArm'];
 
   PD.POSITIONS = {

@@ -206,6 +206,12 @@
         const m = M[j * bw + i];
         if (m) { buf[Y * W + X] = m - 1; continue; }
         if (g.noOutline) continue;
+        // soft roots: where a part grows out of the body, no outline -> it reads as attached
+        if (g.softRoots) {
+          let soft = false;
+          for (const sr of g.softRoots) if ((X + 0.5 - sr.pt.x) ** 2 + (Y + 0.5 - sr.pt.y) ** 2 < sr.r * sr.r) { soft = true; break; }
+          if (soft) continue;
+        }
         let nb = 0;
         if (i > 0 && M[j * bw + i - 1]) nb = M[j * bw + i - 1];
         else if (i < bw - 1 && M[j * bw + i + 1]) nb = M[j * bw + i + 1];
