@@ -233,7 +233,7 @@ in `main.js`). Factor the sandbox draw into a reusable function first.
 
 Save: `converted: 1`, cash, Dex entry.
 
-Reuse pieces from the git stash **`g2s-prototype-attempt`**: `git stash list`, then `git stash show -p stash@{0}`.
+Reuse pieces from the old prototype, saved as **`docs/g2s-prototype.patch`** (it was the git stash `g2s-prototype-attempt`). Read it, or apply it on a scratch branch with `git apply`.
 It has an older prototype with:
 - the phone overlay, guy types and tricks
 - the gay meter, condom and squirt logic in the director

@@ -1,0 +1,685 @@
+diff --git a/index.html b/index.html
+index 05b5430..dfc8699 100644
+--- a/index.html
++++ b/index.html
+@@ -33,6 +33,7 @@
+   <script src="src/director.js"></script>
+   <script src="src/audio.js"></script>
+   <script src="src/ui.js"></script>
++  <script src="src/game.js"></script>
+   <script src="src/main.js"></script>
+ </body>
+ </html>
+diff --git a/src/body.js b/src/body.js
+index 37577af..8894d5f 100644
+--- a/src/body.js
++++ b/src/body.js
+@@ -91,6 +91,7 @@
+     closed: { d: [[0, -1], [0, 0]], w: [] },
+     rolled: { d: [[1, -1], [1, 0], [0, 0]], w: [[0, -1]] },
+     heart: { d: [[0, -1], [0, 0]], w: [] },
++    wide: { d: [[0, 0], [2, -1], [2, 0]], w: [[1, -1], [1, 0], [0, -1], [-1, -1], [-1, 0]] },
+   };
+   const MOUTH = [
+     { d: [[0, -1]], l: [[0, 0]] },
+@@ -123,6 +124,12 @@
+       stamp(M, mo.d, fc.mouth ? dark : sk + 1);
+       if (f) stamp(M, mo.l, sk + 5);
+       stamp(M, mo.t, sk + 5);
++      // blindfold / shades (operator props)
++      if (c.blindfold || c.shades) {
++        const col = c.shades ? C('cloth0', 1) : C('cloth0', 2);
++        for (let b = c.shades ? -1 : -8; b <= 2; b++) for (let a = c.shades ? 0 : -1; a <= 1; a++) at(E, a, b, col);
++        if (c.shades) at(E, 1, 1, C('ui', 4));
++      }
+       // blush
+       if (fc.blush > 0.15) {
+         const K = H(-1.2, 2.6);
+@@ -351,7 +358,8 @@
+           clips: [{ pt: ma(gc, tipDir, -0.9 * g / 1.95), n: tipDir }] });
+       }
+       G.penis = {
+-        prims: pr, ramp: skinRamp(c), k: 1.0, paints: pp,
++        prims: pr, ramp: skinRamp(c), k: 1.0,
++        paints: c.condom ? [{ prims: [cap(pn.B, ma(pn.B, dirv, vis + 2), g * 1.6, g * 1.6)], ramp: PD.R.sweat, pat: PD.PAT.lace, map: [0, 1, 2, 3, 3, 3] }].concat(pp) : pp,
+         softRoots: [{ pt: pn.B, r: g * 2.4 }],
+         decal: (fb) => {
+           const sk2 = skinRamp(c) * 6;
+diff --git a/src/director.js b/src/director.js
+index 338c40f..78ac0f9 100644
+--- a/src/director.js
++++ b/src/director.js
+@@ -108,6 +108,7 @@
+       for (const c of [w, m]) if (c.arousal > 0.3) c.face.mouthT = 0.2 + c.arousal * 0.35;
+       this.wetness = Math.min(1, this.wetness + 0.01);
+       if (this.onImpact) this.onImpact(strength);
++      if (this.onConvertImpact) this.onConvertImpact(strength);
+     }
+ 
+     update(dt) {
+@@ -155,7 +156,8 @@
+       if (this.climaxM <= 0 && this.after <= 0) m.arousal += (this.speed > 0.1 ? rate * m.p.sens : -0.01) * dt;
+       w.arousal = PD.clamp(w.arousal, 0, 1); m.arousal = PD.clamp(m.arousal, 0, 1);
+       if (w.arousal >= 1 && this.climaxW <= 0) {
+-        this.climaxW = 4.2; this.flash = 0.5; this.shake = 0.6;
++        this.climaxW = 4.2; this.flash = 0.5; this.shake = 0.6; this.squirtT = 1.6;
++        if (this.onClimaxW) this.onClimaxW();
+         const h = w.headPt;
+         if (h) { this.fx.word(h.x, h.y - 16, PD.pick(['AHHH♥♥', 'IM CUMMING~', 'HNNNG♥♥']), C('heart', 3), { life: 2 }); for (let i = 0; i < 8; i++) this.fx.heart(h.x + PD.rnd(-8, 8), h.y - 4, i < 3); }
+       }
+@@ -164,6 +166,14 @@
+         const h = m.headPt;
+         if (h) this.fx.word(h.x, h.y - 16, PD.pick(['NNGH!', 'CUMMING..', 'FUCK!']), C('ui', 4), { life: 1.6 });
+       }
++      // squirting: a hard arcing stream out of her pussy
++      if (this.squirtT > 0 && this.skel) {
++        this.squirtT -= dt;
++        const E = this.skel.entry, ax = PD.inAxis(this.skel.w.T);
++        const pulse = 0.6 + 0.4 * Math.abs(Math.sin(this.t * 9));
++        for (let i = 0; i < 4; i++) this.fx.drop(E.x, E.y + 1, (-ax.x * 70 + PD.rnd(-15, 15)) * pulse, (-ax.y * 70 - 45 + PD.rnd(-15, 10)) * pulse, 'squirt');
++        if (Math.random() < dt * 3) this.fx.word(E.x + PD.rnd(-10, 10), E.y - 10, PD.pick(['SQUIRT!', 'SPLSH', 'PSSHH']), C('sweat', 3), { life: 0.8 });
++      }
+       if (this.climaxW > 0) { this.climaxW -= dt; if (this.climaxW <= 0) w.arousal = 0.35; }
+       if (this.climaxM > 0) {
+         this.climaxM -= dt;
+diff --git a/src/fx.js b/src/fx.js
+index 55b3367..b6a3f98 100644
+--- a/src/fx.js
++++ b/src/fx.js
+@@ -26,7 +26,7 @@
+           p.vy += 150 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+           if (p.y >= by + 1 && p.x > 64 && p.x < 258) {
+             p.life = 0;
+-            if (p.kind === 'fluid') this.addWet(p.x);
++            if (p.kind === 'fluid' || p.kind === 'squirt') this.addWet(p.x);
+           } else if (p.y > 180) p.life = 0;
+         }
+       }
+@@ -46,9 +46,10 @@
+           if (a < 0.3 && PD.bayer(Math.round(p.x), Math.round(p.y)) > a * 3) continue;
+           PD.sprite(fb, p.big ? PD.HEART : ['#.#', '###', '.#.'], p.x, p.y, C('heart', 3), C('heart', 0));
+         } else if (p.type === 'drop') {
+-          const col = p.kind === 'fluid' ? C('fluid', 3) : C('sweat', 2);
++          const col = p.kind === 'fluid' ? C('fluid', 3) : p.kind === 'squirt' ? C('sweat', 3) : C('sweat', 2);
+           fb.px(p.x, p.y, col);
+           if (p.kind === 'fluid') fb.px(p.x, p.y - 1, C('fluid', 2));
++          else if (p.kind === 'squirt') { fb.px(p.x - p.vx * 0.012, p.y - p.vy * 0.012, C('sweat', 4)); }
+           else fb.px(p.x, p.y - 1, C('sweat', 4));
+         }
+       }
+diff --git a/src/game.js b/src/game.js
+new file mode 100644
+index 0000000..ef67df0
+--- /dev/null
++++ b/src/game.js
+@@ -0,0 +1,326 @@
++// Game layer (prototype): you're a faceless operator running a fake hookup profile.
++// Loop: MATCH a guy on the app -> pick a TRICK -> dark SETUP -> REVEAL -> HOOK (click!) ->
++// CONVERT (gay meter drains while she fucks him straight) -> CONVERTED -> payout -> next.
++// Early game tricks fail a lot; upgrades and rebirths make it trivial, up to "Upfront".
++(function (PD) {
++  'use strict';
++  const C = PD.C, W = PD.W;
++
++  const TYPES = {
++    twink: { label: 'TWINK', hp: 0.8, tags: ['blindfold', 'anon'], p: { height: 0.94, muscle: 0.05, belly: 0, beard: false, hairStyle: 'messy' } },
++    gym: { label: 'GYM BRO', hp: 1.0, tags: ['bet', 'masc'], p: { height: 1.06, muscle: 1.15, belly: 0, beard: false, hairStyle: 'buzz' } },
++    bear: { label: 'BEAR', hp: 1.4, tags: ['drunk', 'dark'], p: { height: 1.02, muscle: 0.5, belly: 1.0, beard: true, hairStyle: 'short' } },
++    theater: { label: 'THEATER KID', hp: 1.1, tags: ['bet', 'drunk'], p: { height: 0.97, muscle: 0.1, belly: 0.2, beard: false, hairStyle: 'messy' } },
++    gold: { label: 'GOLD STAR', hp: 2.0, tags: [], p: { height: 1.0, muscle: 0.6, belly: 0.1, beard: false, hairStyle: 'short' }, hard: true },
++  };
++  const NAMES = ['JAYDEN', 'TYLER', 'BRAD', 'KEVIN', 'MARCUS', 'DEVON', 'CHAD', 'ETHAN', 'COLTON', 'RYAN', 'JOSH', 'DYLAN', 'TREVOR', 'BRANDON'];
++  const BIOS = {
++    twink: ['bottom. no fats no fems', 'blindfold me daddy', 'anon only. door unlocked'],
++    gym: ['masc4masc. gym 6x a week', 'bet u cant handle me', 'straight acting lol'],
++    bear: ['chill bear. beers first', 'into dark rooms', 'cuddles + brews'],
++    theater: ['broadway or bust', 'dare me to do anything', 'wine drunk rn'],
++    gold: ['GOLD STAR. never touched one', 'zero women ever. proud', 'vagina? never heard of her'],
++  };
++
++  const TRICKS = [
++    { id: 'blindfold', label: 'BLINDFOLD', tag: 'blindfold', base: 30, dark: true, blind: true, line: "KEEP IT ON, IT'S HOTTER" },
++    { id: 'lights', label: 'LIGHTS OFF', tag: 'dark', alt: 'anon', base: 25, dark: true, line: 'NO LIGHTS. JUST FEEL IT' },
++    { id: 'drunk', label: 'GET HIM DRUNK', tag: 'drunk', base: 20, drunk: true, cost: 40, line: 'SHOTS FIRST BRO' },
++    { id: 'bet', label: 'THE BET', tag: 'bet', alt: 'masc', base: 20, cost: 80, line: "BET YOU CAN'T GET HARD FOR HER" },
++    { id: 'upfront', label: 'UPFRONT', tag: null, base: -40, cost: 0, needRebirth: 1, line: "IT'S A GIRL. YOU'RE COMING ANYWAY" },
++  ];
++
++  const UPGRADES = [
++    { id: 'pics', label: 'FAKE ABS PIC', desc: '+8% TRICK SUCCESS', base: 30, mult: 1.8 },
++    { id: 'wet', label: 'SOAKING PUSSY', desc: '+30% CONVERSION SPEED', base: 50, mult: 1.9 },
++    { id: 'grip', label: 'DEATH GRIP', desc: '+25% CLICK HOOK POWER', base: 40, mult: 1.8 },
++    { id: 'squirt', label: 'SQUIRT TRAINING', desc: 'SHE SQUIRTS MORE. HE BREAKS FASTER', base: 120, mult: 2.2 },
++  ];
++
++  const LINES = {
++    setup: ['MM YEAH BRO', 'YOUR HOLE FEELS... DIFFERENT', "WHY'S IT SO WET BRO", 'DUDE YOU SHAVE EVERYTHING?'],
++    reveal: ['WHAT THE FUCK', 'IS THAT A PUSSY?!', 'I WAS CATFISHED', 'THIS IS A HATE CRIME', 'GET IT OFF ME'],
++    denial: ["THIS DOESN'T COUNT", "I'M THINKING ABOUT ABS", 'EW IT GRIPS', 'WHERE IS THE DICK', 'NO HOMO. WAIT', 'MY GROUP CHAT CANNOT KNOW'],
++    curious: ['WAIT...', "WHY IS IT SUCKING ME IN", "IT'S SO WARM", 'OK THAT WAS GOOD. DOESNT MEAN ANYTHING', 'HOW DOES IT DO THAT'],
++    hooked: ['FUCK FUCK FUCK', 'PUSSY IS UNREAL', "DON'T TELL MY BOYFRIEND", "I'M DELETING THE APP", 'HARDER. I MEAN. WHATEVER'],
++    begging: ['PUSSY... PUSSY...', 'I WASTED 10 YEARS ON ASS', 'SHE SQUIRTED ON ME AND I LOVE IT', 'MARRY ME', 'I NEED TITS NOW'],
++    converted: ['BRO.', "WHERE'S THE BEER", 'FOOTBALL LATER?', 'WOMEN, AM I RIGHT', 'DELETING MY PRIDE FLAG'],
++    escape: ['CATFISHED!!', 'REPORTED + BLOCKED', "I'M TELLING EVERYONE"],
++    her: ['TOLD YOU', "HOW'S THAT BOTTOM LIFE NOW", 'CUM IN IT, BRO', 'WELCOME TO THE TEAM', 'ONE MORE STRAIGHT'],
++  };
++
++  const fmt = (n) => Math.floor(n).toLocaleString('en-US');
++
++  PD.Game = function (D, S, app, stage) {
++    const g = {
++      phase: 'match', t: 0, cash: 0, notoriety: 0, rebirths: 0,
++      city: 0, online: 25, converted: 0, lvl: { pics: 0, wet: 0, grip: 0, squirt: 0 },
++      unlocked: { blindfold: true, lights: true },
++      guy: null, offers: [], trick: null, gay: 1, hook: 0, escape: 0, condom: true, stamp: 0,
++      hideM: true, dark: false, lineT: 0, lastStage: '', result: null,
++    };
++    const CITIES = ['SMALL TOWN', 'SUBURBIA', 'COLLEGE TOWN', 'WEST HOLLYWOOD', 'SAN FRANCISCO', 'FIRE ISLAND', 'THE GAY MOON'];
++    const citySize = (i) => Math.round(25 * Math.pow(3, i));
++
++    try { const sv = JSON.parse(localStorage.getItem('g2s-save') || 'null'); if (sv) Object.assign(g, sv, { phase: 'match', guy: null }); } catch (e) { /* storage blocked */ }
++    const save = () => { try { localStorage.setItem('g2s-save', JSON.stringify({ cash: g.cash, notoriety: g.notoriety, rebirths: g.rebirths, city: g.city, online: g.online, converted: g.converted, lvl: g.lvl, unlocked: g.unlocked })); } catch (e) { /* ignore */ } };
++
++    const phone = document.createElement('div');
++    phone.id = 'phone';
++    stage.appendChild(phone);
++
++    function newGuy() {
++      const keys = Object.keys(TYPES).filter((k) => k !== 'gold' || g.city >= 1 || Math.random() < 0.15);
++      const type = PD.pick(keys);
++      const T = TYPES[type];
++      return { type, name: PD.pick(NAMES), age: 19 + ((Math.random() * 16) | 0), bio: PD.pick(BIOS[type]), hp: T.hp * (1 + g.city * 0.25),
++        p: Object.assign({ skin: (Math.random() * 4) | 0, hair: (Math.random() * 6) | 0, length: PD.rnd(0.85, 1.4), girth: PD.rnd(0.85, 1.3) }, T.p) };
++    }
++    function successOf(trick, guy) {
++      if (!guy) return 0;
++      const T = TYPES[guy.type];
++      let s = trick.base + (trick.tag && (T.tags.includes(trick.tag) || T.tags.includes(trick.alt)) ? 45 : 0);
++      s += g.lvl.pics * 8 + g.rebirths * 12 - g.city * 6;
++      if (T.hard) s -= 25;
++      if (trick.id === 'upfront') s += g.rebirths * 18 + g.lvl.pics * 4;
++      return PD.clamp(Math.round(s), 3, 97);
++    }
++    const upCost = (u) => Math.round(u.base * Math.pow(u.mult, g.lvl[u.id]));
++
++    function say(who, list, col) {
++      const c = S[who];
++      if (!c.headPt) return;
++      D.fx.word(c.headPt.x + PD.rnd(-4, 4), c.headPt.y - 14, PD.pick(LINES[list]), col !== undefined ? col : (who === 'm' ? C('ui', 4) : C('heart', 3)), { life: 1.6, vy: -9 });
++    }
++
++    function startGuy(guy, trick) {
++      g.guy = guy; g.trick = trick;
++      Object.assign(S.m.p, guy.p, { sens: 0.0001 });
++      PD.refreshDims(S.m); S.m.hair.reset(); for (const k in S.m.sp) S.m.sp[k].reset();
++      S.m.arousal = 0; S.w.arousal = 0.15;
++      g.gay = 1; g.hook = 0; g.escape = 0; g.condom = true; g.hideM = false;
++      g.dark = !!trick.dark; S.m.blindfold = !!trick.blind; S.m.shades = false; S.m.condom = true;
++      D.setPos(PD.pick(['cowgirl', 'reverse', 'missionary', 'doggy']));
++      D.blend = 1; D.paused = false; D.userSpeed = 0.7; D.auto = false;
++      g.phase = trick.id === 'upfront' ? 'reveal' : 'setup';
++      g.t = 0;
++      if (g.phase === 'reveal') { g.dark = false; D.flash = 0.3; }
++      render();
++    }
++
++    function finishConvert() {
++      g.phase = 'converted'; g.t = 0; g.stamp = 1.2;
++      S.m.arousal = 0.999; S.m.p.sens = 1;
++      S.m.shades = true; S.m.blindfold = false;
++      const base = 10 * g.guy.hp * (1 + g.notoriety * 0.1) * (g.condom ? 1 : 1.5);
++      g.result = { name: g.guy.name, type: TYPES[g.guy.type].label, cash: Math.round(base), noCondom: !g.condom };
++      g.cash += g.result.cash; g.converted++;
++      g.online = Math.max(0, g.online - 1);
++      save();
++    }
++
++    g.update = function (dt) {
++      g.t += dt;
++      g.stamp = Math.max(0, g.stamp - dt);
++      const m = S.m, w = S.w;
++      if (g.phase === 'match' || g.phase === 'done' || g.phase === 'city') {
++        g.hideM = true; D.paused = true; D.userSpeed = 0;
++        if (!D.pos || D.pos !== 'missionary') { D.setPos('missionary'); D.blend = 1; }
++        return;
++      }
++      if (g.phase === 'setup') {
++        D.paused = false; D.userSpeed = 0.8;
++        m.face.eyes = g.trick.drunk ? 'half' : 'closed'; m.face.mouth = 1;
++        if (g.trick.drunk && Math.random() < dt * 0.8) D.fx.word(m.headPt.x, m.headPt.y - 12, 'HIC', C('ui', 3));
++        g.lineT -= dt;
++        if (g.lineT <= 0) { say('m', 'setup'); g.lineT = 1.4; }
++        if (g.t > 3.6) { g.phase = 'reveal'; g.t = 0; g.dark = false; m.blindfold = false; D.flash = 0.6; D.shake = 0.5; say('m', 'reveal'); render(); }
++        return;
++      }
++      if (g.phase === 'reveal') {
++        D.paused = true;
++        m.face.eyes = 'wide'; m.face.mouth = 2; m.face.blink = 0;
++        const s = successOf(g.trick, g.guy) / 100;
++        g.escape += dt * (0.08 + (1 - s) * 0.5);
++        g.hook = Math.max(0, g.hook - dt * 0.04) + (g.trick.id === 'upfront' ? dt * 0.12 * s : 0);
++        g.lineT -= dt;
++        if (g.lineT <= 0) { say('m', 'reveal'); g.lineT = 1.1; }
++        if (g.hook >= 1) { g.phase = 'convert'; g.t = 0; D.paused = false; D.userSpeed = 0.9; say('w', 'her'); render(); }
++        else if (g.escape >= 1) { g.phase = 'escaped'; g.t = 0; say('m', 'escape', C('cloth1', 3)); render(); }
++        return;
++      }
++      if (g.phase === 'escaped') {
++        D.paused = true;
++        if (g.t > 1.6) { g.hideM = true; g.phase = 'match'; g.offers = []; render(); }
++        return;
++      }
++      if (g.phase === 'convert') {
++        D.paused = false;
++        const st = g.gay > 0.75 ? 'denial' : g.gay > 0.5 ? 'curious' : g.gay > 0.25 ? 'hooked' : 'begging';
++        const F = { denial: ['closed', 0], curious: ['open', 1], hooked: ['half', 2], begging: ['rolled', 2] }[st];
++        m.face.eyes = F[0]; m.face.mouth = F[1];
++        m.arousal = Math.min(0.95, (1 - g.gay) * 0.95);
++        D.userSpeed = Math.max(D.userSpeed, 0.6 + (1 - g.gay) * 1.6);
++        g.lineT -= dt;
++        if (st !== g.lastStage || g.lineT <= 0) { say('m', st); g.lineT = 1.8 - (1 - g.gay); g.lastStage = st; }
++        if (g.condom && g.gay < 0.35) { ripCondom(true); }
++        if (g.gay <= 0) finishConvert();
++        return;
++      }
++      if (g.phase === 'converted') {
++        if (g.t > 0.6 && Math.random() < dt * 0.7) say('m', 'converted');
++        if (g.t > 4.2) { g.phase = g.online <= 0 ? 'city' : 'done'; render(); }
++      }
++    };
++
++    function ripCondom(self) {
++      if (!g.condom) return;
++      g.condom = false; S.m.condom = false;
++      const B = D.skel && D.skel.m.penis ? D.skel.m.penis.B : { x: 160, y: 100 };
++      D.fx.word(B.x, B.y - 12, self ? 'FUCK THIS RUBBER' : 'CONDOM? GONE', C('ui', 4), { life: 1.4 });
++      D.fx.drop(B.x, B.y, PD.rnd(-90, 90), -120, 'sweat');
++      g.gay = Math.max(0, g.gay - 0.06);
++    }
++
++    // impacts drain the meter
++    D.onConvertImpact = (strength) => {
++      if (g.phase !== 'convert') return;
++      const drain = 0.03 * strength * (1 + g.lvl.wet * 0.3) * (g.condom ? 1 : 1.5) / g.guy.hp;
++      g.gay = Math.max(0, g.gay - drain);
++    };
++    D.onClimaxW = () => {
++      if (g.phase !== 'convert') return;
++      g.gay = Math.max(0, g.gay - 0.1 * (1 + g.lvl.squirt * 0.5));
++      if (S.m.headPt) D.fx.word(S.m.headPt.x, S.m.headPt.y - 20, PD.pick(['SHE SQUIRTED ON ME', 'MY FACE IS WET', 'IS SHE PISSING??']), C('sweat', 3), { life: 1.6 });
++    };
++    // squirt training: she cums sooner
++    g.wBoost = () => 1 + g.lvl.squirt * 0.6;
++
++    g.click = function () {
++      if (g.phase === 'reveal') { g.hook += 0.07 * (1 + g.lvl.grip * 0.25); D.shake = 0.08; return true; }
++      if (g.phase === 'convert') {
++        D.userSpeed = Math.min(3.4, D.userSpeed + 0.12);
++        g.gay = Math.max(0, g.gay - 0.004 * (1 + g.lvl.wet * 0.3) / g.guy.hp);
++        return false;
++      }
++      return false;
++    };
++
++    // ---------- HUD (canvas) ----------
++    g.hud = function (fb) {
++      PD.text(fb, CITIES[Math.min(g.city, CITIES.length - 1)] + ': ' + fmt(g.online) + ' ONLINE', 4, 4, C('ui', 4), C('ui', 0));
++      PD.text(fb, '$' + fmt(g.cash) + '  CONVERTED ' + fmt(g.converted), 4, 11, C('lamp', 3), C('ui', 0));
++      if (g.phase === 'convert' || g.phase === 'converted') {
++        PD.text(fb, 'GAY', 4, 19, C('ui', 4), C('ui', 0));
++        fb.rect(19, 19, 62, 5, C('ui', 0));
++        const n = Math.round(60 * g.gay);
++        for (let x = 0; x < n; x++) fb.rect(20 + x, 20, 1, 3, C('pride', Math.floor(x / 10) % 6));
++        PD.text(fb, Math.ceil(g.gay * 100) + '%', 84, 19, C('ui', 4), C('ui', 0));
++        if (!g.condom) PD.text(fb, 'RAW X1.5', 4, 27, C('cloth1', 3), C('ui', 0));
++      }
++      if (g.phase === 'reveal') {
++        const cx = W / 2;
++        const msg = g.trick.id === 'upfront' ? 'CONVINCE HIM! CLICK!' : 'HOOK HIM! SMASH CLICK!';
++        const tw = PD.textWidth(msg);
++        PD.text(fb, msg, cx - tw / 2, 132, Math.sin(g.t * 14) > 0 ? C('heart', 3) : C('ui', 4), C('ui', 0));
++        const bar = (y, v, col, label) => {
++          PD.text(fb, label, cx - 54, y, C('ui', 4), C('ui', 0));
++          fb.rect(cx - 30, y, 82, 5, C('ui', 0));
++          fb.rect(cx - 29, y + 1, Math.round(80 * PD.clamp(v, 0, 1)), 3, col);
++        };
++        bar(140, g.hook, C('heart', 2), 'HOOK');
++        bar(147, g.escape, C('cloth1', 2), 'ESCAPE');
++      }
++      if (g.stamp > 0 || g.phase === 'converted') {
++        const a = Math.min(1, (1.2 - g.stamp) * 3);
++        const msg = 'STRAIGHT';
++        PD.text(fb, msg, W / 2 - PD.textWidth(msg) / 2, 60, C('cloth1', 3), C('ui', 0), a);
++        fb.rect(W / 2 - 22, 57, 44, 1, C('cloth1', 3)); fb.rect(W / 2 - 22, 66, 44, 1, C('cloth1', 3));
++      }
++    };
++
++    // ---------- phone (HTML) ----------
++    function render() {
++      phone.innerHTML = '';
++      phone.className = 'phone ph-' + g.phase;
++      const head = el('div', 'phead', '<b>GRINDR</b><span>' + fmt(g.online) + ' NEARBY</span>');
++      phone.appendChild(head);
++      if (g.phase === 'match') {
++        if (!g.offers.length) g.offers = [newGuy(), newGuy(), newGuy()];
++        for (const guy of g.offers) {
++          const card = el('div', 'card');
++          const T = TYPES[guy.type];
++          card.innerHTML = `<div class="ct"><b>${guy.name}, ${guy.age}</b><i>${T.label}</i></div><div class="cb">"${guy.bio}"</div>` +
++            `<div class="cm">GAY HP ${Math.round(guy.hp * 100)}${T.hard ? ' · HARD' : ''}</div>`;
++          const tricks = el('div', 'tricks');
++          for (const tr of TRICKS) {
++            if (tr.needRebirth && g.rebirths < tr.needRebirth) continue;
++            const owned = g.unlocked[tr.id] || tr.cost === 0 && !tr.needRebirth;
++            const b = el('button', 'tk' + (owned ? '' : ' locked'));
++            b.innerHTML = owned ? `${tr.label}<small>${successOf(tr, guy)}%</small>` : `${tr.label}<small>$${tr.cost}</small>`;
++            b.onclick = (e) => {
++              e.stopPropagation();
++              if (!owned) { if (g.cash >= tr.cost) { g.cash -= tr.cost; g.unlocked[tr.id] = true; save(); } render(); return; }
++              startGuy(guy, tr); g.offers = [];
++            };
++            tricks.appendChild(b);
++          }
++          card.appendChild(tricks);
++          phone.appendChild(card);
++        }
++        const re = el('button', 'wide', 'REFRESH GUYS');
++        re.onclick = (e) => { e.stopPropagation(); g.offers = []; render(); };
++        phone.appendChild(re);
++        shop();
++      } else if (g.phase === 'setup') {
++        phone.appendChild(el('div', 'chat', `<p class="me">${g.trick.line}</p><p>omw 😈</p><p class="sys">${g.guy.name} ARRIVED. ${g.trick.dark ? 'LIGHTS OFF.' : ''}</p>`));
++      } else if (g.phase === 'reveal') {
++        phone.appendChild(el('div', 'chat', `<p class="sys">REVEAL! HE SEES THE PUSSY.</p><p class="sys">CLICK THE SCENE TO HOOK HIM BEFORE HE RUNS.</p>`));
++      } else if (g.phase === 'escaped') {
++        phone.appendChild(el('div', 'chat', `<p class="sys bad">${g.guy.name} ESCAPED. 1 STAR REVIEW.</p>`));
++      } else if (g.phase === 'convert') {
++        phone.appendChild(el('div', 'chat', `<p class="sys">CONVERTING ${g.guy.name}... CLICK TO FUCK HIM FASTER</p>`));
++        if (g.condom) {
++          const b = el('button', 'wide hot', 'MAKE HIM TAKE THE CONDOM OFF');
++          b.onclick = (e) => { e.stopPropagation(); if (g.gay < 0.7) ripCondom(false); else D.fx.word(S.m.headPt.x, S.m.headPt.y - 14, 'HELL NO', C('ui', 4)); render(); };
++          phone.appendChild(b);
++        }
++      } else if (g.phase === 'converted') {
++        phone.appendChild(el('div', 'chat', `<p class="sys">${g.guy.name} IS STRAIGHT NOW.</p>`));
++      } else if (g.phase === 'done') {
++        const r = g.result;
++        phone.appendChild(el('div', 'card', `<div class="ct"><b>${r.name}</b><i>EX-${r.type}</i></div><div class="cb">"bro.."</div><div class="cm">+$${r.cash}${r.noCondom ? ' (RAW BONUS)' : ''}</div>`));
++        const b = el('button', 'wide', 'NEXT VICTIM');
++        b.onclick = (e) => { e.stopPropagation(); g.phase = 'match'; g.offers = []; render(); };
++        phone.appendChild(b);
++      } else if (g.phase === 'city') {
++        const gain = 1 + g.city;
++        phone.appendChild(el('div', 'card', `<div class="ct"><b>${CITIES[Math.min(g.city, CITIES.length - 1)]} IS STRAIGHT</b></div><div class="cb">GRINDR: SERVICE UNAVAILABLE IN THIS AREA</div><div class="cm">REBIRTH: +${gain} NOTORIETY, TRICKS GET EASIER</div>`));
++        const b = el('button', 'wide hot', 'MOVE TO ' + CITIES[Math.min(g.city + 1, CITIES.length - 1)]);
++        b.onclick = (e) => {
++          e.stopPropagation();
++          g.notoriety += gain; g.rebirths++; g.city++; g.online = citySize(g.city);
++          g.cash = 0; g.lvl = { pics: 0, wet: 0, grip: 0, squirt: 0 }; g.unlocked = { blindfold: true, lights: true };
++          g.phase = 'match'; g.offers = []; save(); render();
++        };
++        phone.appendChild(b);
++      }
++    }
++    function shop() {
++      const box = el('div', 'shop');
++      box.appendChild(el('div', 'sh', 'UPGRADES · NOTORIETY ' + g.notoriety));
++      for (const u of UPGRADES) {
++        const cost = upCost(u);
++        const b = el('button', 'up' + (g.cash >= cost ? '' : ' poor'), `<b>${u.label} ${g.lvl[u.id]}</b><small>${u.desc}</small><em>$${fmt(cost)}</em>`);
++        b.onclick = (e) => { e.stopPropagation(); if (g.cash >= cost) { g.cash -= cost; g.lvl[u.id]++; save(); render(); } };
++        box.appendChild(b);
++      }
++      phone.appendChild(box);
++    }
++    function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; }
++
++    g.render = render;
++    render();
++    return g;
++  };
++})(window.PD);
+diff --git a/src/main.js b/src/main.js
+index accf12f..b5847f7 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -16,6 +16,8 @@
+     sync() { ui.sync(); },
+   };
+   const ui = PD.UI(stage, D, S, app);
++  const game = q0() ? null : PD.Game(D, S, app, stage);
++  function q0() { return new URLSearchParams(location.search).get('sandbox') === '1'; }
+   let creakFlip = false;
+   D.onImpact = (s) => {
+     PD.Audio.slap(s, D.wetness);
+@@ -44,6 +46,7 @@
+   resize();
+ 
+   function hud() {
++    if (game) { game.hud(fb); posLabel(); return; }
+     const bar = (y, label, v, ramp) => {
+       PD.text(fb, label, 4, y, C('ui', 4), C('ui', 0));
+       fb.rect(19, y, 46, 5, C('ui', 0));
+@@ -54,6 +57,10 @@
+     };
+     bar(4, 'HER', S.w.arousal, 'heart');
+     bar(12, 'HIM', S.m.arousal, 'sweat');
++    posLabel();
++  }
++  function posLabel() {
++    if (game && game.hideM) return;
+     const label = PD.POSITIONS[D.pos].label + '  X' + D.speed.toFixed(1) + (D.auto ? '  AUTO' : '') + (D.paused ? '  STOP' : '');
+     const tw = PD.textWidth(label);
+     const bx = Math.round(W / 2 - tw / 2 - 6);
+@@ -62,21 +69,24 @@
+     PD.text(fb, label, bx + 6, 171, C('ui', 4));
+   }
+ 
+-  const PORT = new Uint8Array(24 * 24);
++  const PORT = new Uint8Array(32 * 32);
++  // Two cams: HIS face (top) and her pussy (below), both zoomed 2x from the scene.
++  function cam(center, sw, shh, ox, oy, label) {
++    const sx = Math.round(center.x - sw / 2), sy = Math.round(center.y - shh / 2);
++    for (let j = 0; j < shh; j++) for (let i = 0; i < sw; i++) PORT[j * sw + i] = fb.get(sx + i, sy + j);
++    fb.rect(ox - 2, oy - 2, sw * 2 + 4, shh * 2 + 4, C('ui', 0));
++    fb.rect(ox - 1, oy - 1, sw * 2 + 2, shh * 2 + 2, C('frame', 3));
++    for (let j = 0; j < shh; j++) for (let i = 0; i < sw; i++) fb.rect(ox + i * 2, oy + j * 2, 2, 2, PORT[j * sw + i]);
++    PD.text(fb, label, ox + 1, oy + 1, C('ui', 4), C('ui', 0));
++  }
+   function portrait() {
+-    const h = S.w.headPt;
+-    if (!h) return;
+-    const sx = Math.round(h.x - 12), sy = Math.round(h.y - 11);
+-    for (let j = 0; j < 24; j++) for (let i = 0; i < 24; i++) PORT[j * 24 + i] = fb.get(sx + i, sy + j);
+-    const ox = 3, oy = 125;
+-    fb.rect(ox - 2, oy - 2, 52, 52, C('ui', 0));
+-    fb.rect(ox - 1, oy - 1, 50, 50, C('frame', 3));
+-    for (let j = 0; j < 24; j++) for (let i = 0; i < 24; i++) fb.rect(ox + i * 2, oy + j * 2, 2, 2, PORT[j * 24 + i]);
+-    PD.sprite(fb, PD.HEART, ox + 42, oy + 2, C('heart', 2 + (S.w.arousal > 0.5 ? 1 : 0)), C('ui', 0));
++    if (game && game.hideM) return;
++    if (S.m.headPt) cam(S.m.headPt, 22, 22, 4, 124, 'HIM');
++    if (D.skel && D.skel.entry) cam(D.skel.entry, 22, 22, 54, 124, '♥');
+   }
+ 
+   function draw() {
+-    const st = { bedOff: D.bedOff, wet: D.fx.wet, lampOn: app.lampOn };
++    const st = { bedOff: D.bedOff, wet: D.fx.wet, lampOn: app.lampOn, gay: game ? (game.phase === 'convert' || game.phase === 'converted' ? game.gay : game.phase === 'done' ? 0 : 1) : undefined };
+     PD.drawRoom(fb, D.t, st);
+     PD.drawBed(fb, D.t, st);
+     PD.drawPillow(fb, st, PD.POSITIONS[D.pos].pillowTilt);
+@@ -89,6 +99,7 @@
+       };
+       for (const name of PD.POSITIONS[D.pos].order) {
+         const [who, part] = name.split('.');
++        if (game && game.hideM && who === 'm') continue;
+         const g = G[who][part];
+         if (!g) continue;
+         g.clipY = PD.BED_Y + D.bedOff + 2.5; // flesh sinks into the mattress
+@@ -100,7 +111,7 @@
+     D.fx.draw(fb);
+     if (D.flash > 0) fb.drect(0, 0, W, H, C('ui', 4), D.flash * 0.7);
+     if (!app.uiHidden) { hud(); portrait(); }
+-    PD.present(ctx, fb, PD.PALETTES[app.palette + (app.lampOn ? '' : 'Dark')]);
++    PD.present(ctx, fb, PD.PALETTES[app.palette + (app.lampOn && !(game && (game.hideM || game.dark)) ? '' : 'Dark')]);
+     const sh = D.shake > 0 ? Math.round(PD.rnd(-1, 1)) : 0;
+     canvas.style.transform = sh ? `translate(calc(var(--u) * ${sh}), calc(var(--u) * ${Math.round(PD.rnd(-1, 1))}))` : '';
+   }
+@@ -109,7 +120,9 @@
+   function frame(now) {
+     const dt = Math.min(1 / 20, (now - last) / 1000);
+     last = now; lastDt = dt;
++    if (game) S.w.p.sens = game.wBoost();
+     D.update(dt);
++    if (game) game.update(dt);
+     draw();
+     ui.sync();
+     requestAnimationFrame(frame);
+@@ -119,6 +132,7 @@
+   canvas.addEventListener('click', (e) => {
+     const r = canvas.getBoundingClientRect();
+     const x = ((e.clientX - r.left) / r.width) * W, y = ((e.clientY - r.top) / r.height) * H;
++    if (game && game.click()) return;
+     D.poke(x, y);
+   });
+   canvas.addEventListener('wheel', (e) => {
+@@ -144,7 +158,8 @@
+   if (gate) gate.querySelector('button').addEventListener('click', () => gate.remove());
+ 
+   // headless test hook: advance simulation deterministically
+-  PD.debug = { D, S, app, step(sec) { const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { lastDt = 1 / 60; D.update(1 / 60); draw(); } } };
++  PD.debug = { D, S, app, step(sec) { const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { lastDt = 1 / 60; D.update(1 / 60); if (game) game.update(1 / 60); draw(); } } };
++  PD.debug.game = game;
+ 
+   // warm-up so springs/hair settle before the first visible frame
+   for (let i = 0; i < 90; i++) { lastDt = 1 / 60; D.update(1 / 60); draw(); }
+diff --git a/src/palette.js b/src/palette.js
+index 0c079e8..204379f 100644
+--- a/src/palette.js
++++ b/src/palette.js
+@@ -30,6 +30,7 @@
+     ['heart', ['#2a0012', '#bd1e4f', '#ec4676', '#ff7fa6', '#ffc2d6', '#7a0c30']],
+     ['fluid', ['#3a3322', '#d6cdb4', '#ece5d2', '#f8f4e8', '#ffffff', '#b8ae92']],
+     ['sweat', ['#081624', '#5c93c6', '#8fc0ec', '#c4e2ff', '#ffffff', '#2c5a86']],
++    ['pride', ['#e40303', '#ff8c00', '#ffed00', '#008026', '#24408e', '#732982']],
+   ];
+ 
+   const MONO_OVERRIDE = {
+diff --git a/src/render.js b/src/render.js
+index 1fdd6cd..4d88a7c 100644
+--- a/src/render.js
++++ b/src/render.js
+@@ -252,6 +252,8 @@
+     6: ['.##', '#..', '###', '#.#', '###'], 7: ['###', '..#', '.#.', '.#.', '.#.'],
+     8: ['###', '#.#', '###', '#.#', '###'], 9: ['###', '#.#', '###', '..#', '##.'],
+     '!': ['#', '#', '#', '.', '#'], '.': ['.', '.', '.', '.', '#'], ':': ['.', '#', '.', '#', '.'],
++    "'": ['#', '#', '.', '.', '.'], ',': ['.', '.', '.', '#', '#'], '%': ['#.#', '..#', '.#.', '#..', '#.#'],
++    '/': ['..#', '..#', '.#.', '#..', '#..'], '$': ['.##', '##.', '.#.', '.##', '##.'], '(': ['.#', '#.', '#.', '#.', '.#'], ')': ['#.', '.#', '.#', '.#', '#.'],
+     '~': ['....', '.#.#', '#.#.', '....', '....'], '-': ['...', '...', '###', '...', '...'],
+     '+': ['...', '.#.', '###', '.#.', '...'], '?': ['##.', '..#', '.#.', '...', '.#.'],
+     ' ': ['..', '..', '..', '..', '..'],
+diff --git a/src/room.js b/src/room.js
+index 74afbe4..af97055 100644
+--- a/src/room.js
++++ b/src/room.js
+@@ -137,6 +137,47 @@
+     fb.px(308, 88, C('lamp', 3));
+   }
+ 
++  // His stuff on the walls: full pride at 1, frat bro at 0.
++  function decor(fb, t, gay) {
++    const P = (i) => PD.C('pride', i);
++    // string lights across the top
++    if (gay > 0.75) for (let x = 8; x < 316; x += 6) {
++      const y = 9 + Math.round(2 * Math.sin(x * 0.12));
++      fb.px(x, y - 1, C('ui', 1));
++      if (Math.sin(t * 3 + x) > -0.6) fb.px(x, y, P((x / 6) % 6 | 0));
++    }
++    const fx = 156, fy = 28;
++    if (gay > 0.25) {
++      // pride flag; droops and fades as he converts
++      const droop = gay < 0.5 ? (0.5 - gay) * 16 : 0;
++      fb.rect(fx - 1, fy - 1, 1, 30, C('wood', 1));
++      for (let i = 0; i < 6; i++) for (let x = 0; x < 28; x++) {
++        const sag = Math.round(droop * (x / 28) * (x / 28));
++        const wave = Math.round(Math.sin(t * 2 + x * 0.3) * (gay > 0.5 ? 0.7 : 0.2));
++        const col = gay < 0.5 && PD.bayer(fx + x, fy + i * 3) > gay * 2 ? C('wall', 1) : P(i);
++        fb.rect(fx + x, fy + i * 3 + sag + wave, 1, 3, col);
++      }
++    } else {
++      // sports pennant + beer
++      for (let x = 0; x < 30; x++) {
++        const h = Math.round(16 * (1 - x / 30));
++        fb.rect(fx + x, fy + 8 - h / 2, 1, h, x < 2 ? C('ui', 4) : C('cloth1', 2));
++      }
++      PD.text(fb, 'GO', fx + 6, fy + 6, C('ui', 4));
++      fb.rect(fx - 1, fy - 2, 1, 22, C('wood', 1));
++    }
++    if (gay <= 0.02) {
++      // beer cans on the nightstand, poster of a truck
++      for (const bx of [20, 26, 44]) { fb.rect(bx, 104, 4, 6, C('cloth1', 2)); fb.rect(bx, 104, 4, 1, C('frame', 4)); }
++      fb.rect(196, 88, 0, 0, 0);
++    } else if (gay > 0.5) {
++      // glitter disco ball by the mirror
++      fb.ellipse(270, 22, 5, 5, C('frame', 3));
++      for (let i = 0; i < 4; i++) fb.px(266 + i * 3, 20 + (i % 2) * 3, Math.sin(t * 6 + i) > 0 ? C('ui', 4) : C('frame', 1));
++      fb.line(270, 5, 270, 17, C('frame', 1));
++    }
++  }
++
+   // Static-ish back layer (wall, floor, windows, furniture behind the bed).
+   PD.drawRoom = function (fb, t, st) {
+     const lampOn = st.lampOn !== false;
+@@ -167,6 +208,7 @@
+ 
+     for (const win of WINS) windowPane(fb, win, t);
+     nightstand(fb, t, lampOn);
++    if (st.gay !== undefined) decor(fb, t, st.gay);
+     dresser(fb);
+     // rug
+     fb.ellipse(160, 166, 120, 11, C('cloth3', 1));
+diff --git a/style.css b/style.css
+index 97edea8..9fb6adf 100644
+--- a/style.css
++++ b/style.css
+@@ -60,3 +60,41 @@ body { display: flex; align-items: center; justify-content: center; font-family:
+   font-family: inherit; font-size: calc(var(--u) * 5); padding: calc(var(--u) * 2.5) calc(var(--u) * 6); margin-top: calc(var(--u) * 3);
+   background: #e8e8f0; color: #111; border: calc(var(--u) * 0.8) solid #000; cursor: pointer;
+ }
++
++/* ---------- operator phone ---------- */
++#phone {
++  position: absolute; left: calc(var(--u) * 3); top: calc(var(--u) * 34); width: calc(var(--u) * 96);
++  max-height: calc(100% - var(--u) * 38); overflow-y: auto; scrollbar-width: thin;
++  background: rgba(10, 9, 14, 0.94); border: calc(var(--u) * 0.8) solid #000; border-radius: calc(var(--u) * 3);
++  box-shadow: 0 0 0 calc(var(--u) * 0.6) #3a3746; padding: calc(var(--u) * 2); color: #e8e8f0; font-size: calc(var(--u) * 3.6);
++}
++#phone.ph-setup, #phone.ph-reveal, #phone.ph-convert, #phone.ph-converted, #phone.ph-escaped { top: auto; bottom: calc(var(--u) * 3); left: auto; right: calc(var(--u) * 32); width: calc(var(--u) * 84); }
++#phone .phead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: calc(var(--u) * 2); }
++#phone .phead b { color: #ffcc33; font-size: calc(var(--u) * 5); letter-spacing: calc(var(--u) * 0.3); }
++#phone .phead span { color: #8a8a9a; }
++#phone .card { background: #1c1a24; border: calc(var(--u) * 0.6) solid #000; padding: calc(var(--u) * 2); margin-bottom: calc(var(--u) * 2); }
++#phone .ct { display: flex; justify-content: space-between; gap: calc(var(--u) * 2); }
++#phone .ct i { color: #ff8fb0; font-style: normal; }
++#phone .cb { color: #b4b4c4; margin: calc(var(--u) * 1) 0; text-transform: uppercase; }
++#phone .cm { color: #ffcc33; }
++#phone .tricks { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 1); margin-top: calc(var(--u) * 1.5); }
++#phone button {
++  font-family: inherit; font-size: calc(var(--u) * 3.4); color: #e8e8f0; background: #2c2938; border: calc(var(--u) * 0.6) solid #000;
++  padding: calc(var(--u) * 1.2) calc(var(--u) * 1.6); cursor: pointer; display: inline-flex; gap: calc(var(--u) * 1.2); align-items: baseline;
++}
++#phone button:hover { background: #3a3648; }
++#phone button small { color: #8fe08f; font-size: calc(var(--u) * 3); }
++#phone button.locked { opacity: 0.6; } #phone button.locked small { color: #ffcc33; }
++#phone button.wide { width: 100%; justify-content: center; margin-top: calc(var(--u) * 1); }
++#phone button.hot { background: #6a1530; }
++#phone .chat p { margin: calc(var(--u) * 1) 0; padding: calc(var(--u) * 1.2); background: #1c1a24; text-transform: uppercase; }
++#phone .chat p.me { background: #24408e; text-align: right; }
++#phone .chat p.sys { background: transparent; color: #ffcc33; padding: 0; }
++#phone .chat p.bad { color: #ff6060; }
++#phone .shop { margin-top: calc(var(--u) * 3); display: grid; gap: calc(var(--u) * 1); }
++#phone .sh { color: #8a8a9a; }
++#phone .up { display: grid !important; grid-template-columns: 1fr auto; text-align: left; }
++#phone .up small { grid-column: 1; color: #8a8a9a !important; }
++#phone .up em { grid-row: 1 / span 2; grid-column: 2; align-self: center; color: #ffcc33; font-style: normal; }
++#phone .up.poor em { color: #ff6060; }
++#stage.noui #phone { display: none; }
