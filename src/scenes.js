@@ -129,17 +129,19 @@
     fb.rect(x - 1, y - 1, 52, 92, C('ink', 0));
     fb.rect(x, y, 50, 90, C('ink', 3));
     fb.rect(x + 2, y + 2, 46, 86, C('ink', 0));
-    fb.rect(x + 3, y + 6, 44, 78, C('ink', 1));
-    // app header
-    fb.rect(x + 3, y + 6, 44, 9, C('gold', 2));
-    PD.text(fb, 'GRINDR', x + 5, y + 8, C('ink', 0));
-    // grid of faceless profile tiles
+    fb.rect(x + 3, y + 6, 44, 78, C('ink', 0));
+    // app header: black bar, yellow mask
+    fb.rect(x + 3, y + 6, 44, 10, C('ink', 0));
+    fb.rect(x + 3, y + 15, 44, 1, C('gold', 1));
+    PD.drawMask(fb, x + 9, y + 7, 9, 8);
+    PD.text(fb, 'GRINDR', x + 16, y + 8, C('gold', 2));
+    // grid of guys (tiny avatar busts)
+    const cast = PD.CAST ? Object.values(PD.CAST) : [];
     for (let j = 0; j < 4; j++) for (let i = 0; i < 3; i++) {
-      const tx = x + 4 + i * 14, ty = y + 17 + j * 15;
+      const tx = x + 4 + i * 14, ty = y + 17 + j * 15, k = j * 3 + i;
       fb.rect(tx, ty, 13, 14, C('night', 2 + ((i + j) % 2)));
-      fb.ellipse(tx + 6.5, ty + 5, 3, 3, C('night', 4));
-      fb.rect(tx + 2, ty + 9, 9, 5, C('night', 4));
-      if (Math.sin(t * 2 + i * 3 + j * 5) > 0.3) fb.rect(tx + 10, ty + 1, 2, 2, C('lime', 2));
+      if (cast.length) PD.drawDude(fb, tx + 6.5, ty + 37, Object.assign({ s: 1, clip: [tx, ty, 13, 14] }, cast[(k * 5 + 3) % cast.length], { flag: false, beer: false }));
+      if (Math.sin(t * 2 + i * 3 + j * 5) > 0.3) { fb.rect(tx + 9, ty + 1, 3, 3, C('ink', 0)); fb.px(tx + 10, ty + 2, C('lime', 3)); }
     }
     fb.rect(x + 3, y + 78, 44, 6, C('ink', 2));
     PD.text(fb, online, x + 5, y + 79, C('gold', 3));
@@ -249,10 +251,10 @@
       drawPhone(fb, 214, 50, SM.t, false, '10,000 ONLINE');
       const tips = [['TWINKS LOVE A', 'BLINDFOLD. DUMMIES.'], ["GYM BROS CAN'T", 'REFUSE A BET'], ['THE COUNTER ONLY', 'GOES ONE WAY'], ['NO FATS NO FEMS', 'NO VAGINAS. YET.'], ['BEARS GET DRUNK', 'FAST. CHEAP DATE.'], ['EVERY FAG IS ONE', 'PUSSY AWAY. MATH.']];
       const tip = tips[Math.floor(SM.t / 4) % tips.length];
-      PD.panel(fb, 196, 146, 86, 20, 'ink', { fill: 2 });
-      PD.textS(fb, 'TIP', 200, 149, 1, C('gold', 2));
-      PD.textS(fb, tip[0], 214, 149, 1, C('ui', 4));
-      PD.textS(fb, tip[1], 214, 157, 1, C('cyan', 3));
+      PD.panel(fb, 190, 146, 124, 20, 'ink', { fill: 2 });
+      PD.textS(fb, 'TIP', 194, 149, 1, C('gold', 2));
+      PD.textS(fb, tip[0], 208, 149, 1, C('ui', 4));
+      PD.textS(fb, tip[1], 208, 157, 1, C('cyan', 3));
       if (save) PD.textS(fb, 'SAVE: ' + save.converted + ' CONVERTED', bx, 160, 1, C('gold', 3), { outline: C('ink', 0) });
       PD.textS(fb, 'UP/DOWN + ENTER  OR CLICK', bx, 170, 1, C('cyan', 2));
       if (this.confirm === 'new') {

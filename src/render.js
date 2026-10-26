@@ -51,6 +51,20 @@
       const x1 = Math.min(W, Math.round(x + w)), y1 = Math.min(H, Math.round(y + h));
       for (let j = y0; j < y1; j++) this.buf.set(src.buf.subarray(j * W + x0, j * W + x1), j * W + x0);
     }
+    // scaled copy about (cx,cy), skipping 'key' pixels (used for pop-in effects)
+    blitKey(src, cx, cy, sc, key) {
+      if (sc <= 0.01) return;
+      for (let y = 0; y < H; y++) {
+        const sy = Math.floor(cy + (y + 0.5 - cy) / sc);
+        if (sy < 0 || sy >= H) continue;
+        for (let x = 0; x < W; x++) {
+          const sx = Math.floor(cx + (x + 0.5 - cx) / sc);
+          if (sx < 0 || sx >= W) continue;
+          const v = src.buf[sy * W + sx];
+          if (v !== key) this.buf[y * W + x] = v;
+        }
+      }
+    }
     line(x0, y0, x1, y1, c) {
       x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
       const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);

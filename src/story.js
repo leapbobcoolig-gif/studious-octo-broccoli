@@ -9,14 +9,120 @@
   const up = (s) => String(s).toUpperCase();
 
   // ============================================================
-  //  CHIBI DUDE
-  //  Drawn on a 32x40 unit grid (feet at 16,39), outlined + shaded,
-  //  then stamped at any integer scale.
+  //  PIXEL SHAPES: build on a grid, auto-outline + edge shade, stamp
   // ============================================================
-  const GW = 32, GH = 40;
-  const grid = new Int16Array(GW * GH);
   const EMPTY = -1;
-  function gset(x, y, c) { if (x >= 0 && y >= 0 && x < GW && y < GH) grid[y * GW + x] = c; }
+  function shadeGrid(g, w, h) {
+    const get = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? EMPTY : g[y * w + x]);
+    const out = new Int16Array(w * h).fill(EMPTY), INK = C('ink', 0);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const v = get(i, j);
+      if (v === EMPTY) {
+        if (get(i - 1, j) !== EMPTY || get(i + 1, j) !== EMPTY || get(i, j - 1) !== EMPTY || get(i, j + 1) !== EMPTY) out[j * w + i] = INK;
+        continue;
+      }
+      // light from upper-left: cells on the right/bottom silhouette edge drop one shade
+      const edge = get(i + 1, j) === EMPTY || get(i, j + 1) === EMPTY;
+      const sh = v % 6;
+      out[j * w + i] = edge && sh > 1 && sh < 5 ? v - 1 : v;
+    }
+    return out;
+  }
+  function stampGrid(fb, out, w, h, ox, oy, s, o) {
+    o = o || {};
+    const r0 = o.rows ? o.rows[0] : 0, r1 = o.rows ? o.rows[1] : h, cl = o.clip;
+    for (let j = r0; j < r1; j++) for (let i = 0; i < w; i++) {
+      const v = out[j * w + i];
+      if (v === EMPTY) continue;
+      const fx = o.flip ? ox + (w - 1 - i) * s : ox + i * s, fy = oy + j * s;
+      if (cl) {
+        if (fx + s <= cl[0] || fy + s <= cl[1] || fx >= cl[0] + cl[2] || fy >= cl[1] + cl[3]) continue;
+        const ax = Math.max(fx, cl[0]), ay = Math.max(fy, cl[1]);
+        fb.rect(ax, ay, Math.min(fx + s, cl[0] + cl[2]) - ax, Math.min(fy + s, cl[1] + cl[3]) - ay, v);
+      } else fb.rect(fx, fy, s, s, v);
+    }
+  }
+  // Freeform blob builder (hands, props). Coordinates are grid units.
+  class Blob {
+    constructor(w, h) { this.w = w; this.h = h; this.g = new Int16Array(w * h).fill(EMPTY); }
+    set(x, y, c) { x = Math.floor(x); y = Math.floor(y); if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.g[y * this.w + x] = c; return this; }
+    ell(cx, cy, rx, ry, c, ang) {
+      const ca = Math.cos(ang || 0), sa = Math.sin(ang || 0), R = Math.max(rx, ry) + 1;
+      for (let j = Math.floor(cy - R); j <= Math.ceil(cy + R); j++) for (let i = Math.floor(cx - R); i <= Math.ceil(cx + R); i++) {
+        const dx = i + 0.5 - cx, dy = j + 0.5 - cy, u = (dx * ca + dy * sa) / rx, v = (-dx * sa + dy * ca) / ry;
+        if (u * u + v * v <= 1) this.set(i, j, c);
+      }
+      return this;
+    }
+    cap(ax, ay, bx, by, ra, rb, c) {
+      const R = Math.max(ra, rb) + 1, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1;
+      for (let j = Math.floor(Math.min(ay, by) - R); j <= Math.ceil(Math.max(ay, by) + R); j++)
+        for (let i = Math.floor(Math.min(ax, bx) - R); i <= Math.ceil(Math.max(ax, bx) + R); i++) {
+          const px = i + 0.5 - ax, py = j + 0.5 - ay, t = clamp((px * dx + py * dy) / L2, 0, 1);
+          const qx = px - dx * t, qy = py - dy * t;
+          if (qx * qx + qy * qy <= Math.pow(ra + (rb - ra) * t, 2)) this.set(i, j, c);
+        }
+      return this;
+    }
+    rect(x, y, w, h, c) { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) this.set(i, j, c); return this; }
+    // post(F): F(x,y,c) paints detail (creases, nails) after outlining
+    draw(fb, ox, oy, s, post, o) {
+      const out = shadeGrid(this.g, this.w, this.h);
+      if (post) post((x, y, c) => { x = Math.floor(x); y = Math.floor(y); if (x >= 0 && y >= 0 && x < this.w && y < this.h && out[y * this.w + x] !== EMPTY) out[y * this.w + x] = c; });
+      stampGrid(fb, out, this.w, this.h, Math.round(ox), Math.round(oy), s || 1, o);
+    }
+  }
+  PD.Blob = Blob;
+
+  // ============================================================
+  //  THE APP LOGO: the yellow mask
+  // ============================================================
+  const MASK_SMALL = ['.#######.', '#########', '#########', '#..###..#', '##.###.##', '.#######.', '..#####..', '...###...'];
+  PD.drawMask = function (fb, cx, top, w, h, o) {
+    o = o || {};
+    if (w < 14) { PD.sprite(fb, MASK_SMALL, Math.round(cx - 4.5), top, o.col || C('gold', 2)); return; }
+    const hw = w / 2;
+    const inside = (px, py) => {
+      const u = (px + 0.5 - cx) / hw, v = (py + 0.5 - top) / h, au = Math.abs(u);
+      if (v < 0.045 * (1 - u * u) || v > 1) return false;           // slightly scooped top edge
+      const half = v < 0.07 ? 0.9 + (v / 0.07) * 0.1 : 1 - 0.27 * Math.pow((v - 0.07) / 0.78, 1.45);
+      if (au > half) return false;
+      return v <= 1 - 0.17 * Math.pow(au / 0.72, 1.25);               // shallow chin point
+    };
+    const eye = (px, py) => {
+      for (const d of [-1, 1]) {
+        const ex = cx + d * 0.43 * hw, ey = top + 0.58 * h, ang = -d * 0.26;
+        const dx = px + 0.5 - ex, dy = py + 0.5 - ey;
+        // outer end rounder: widen ry on the outer half
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        const u = (dx * ca + dy * sa) / (0.31 * hw), v = (-dx * sa + dy * ca) / ((u * d > 0 ? 0.125 : 0.1) * h);
+        if (u * u + v * v <= 1) return true;
+      }
+      return false;
+    };
+    for (let y = Math.floor(top); y <= Math.ceil(top + h); y++) for (let x = Math.floor(cx - hw - 1); x <= Math.ceil(cx + hw + 1); x++) {
+      if (!inside(x, y)) {
+        if (o.outline !== undefined && (inside(x + 1, y) || inside(x - 1, y) || inside(x, y + 1) || inside(x, y - 1))) fb.px(x, y, o.outline);
+        continue;
+      }
+      if (eye(x, y)) { fb.px(x, y, o.eye !== undefined ? o.eye : C('ink', 0)); continue; }
+      const v = (y - top) / h;
+      let c = v < 0.4 ? C('gold', 3) : C('gold', 2);
+      if (v >= 0.35 && v < 0.45 && PD.bayer(x, y) < (v - 0.35) * 10) c = C('gold', 2);
+      if (!inside(x - 1, y) || !inside(x, y - 1)) c = C('gold', 4);
+      else if (!inside(x + 1, y) || !inside(x, y + 1)) c = C('gold', 1);
+      fb.px(x, y, c);
+    }
+  };
+
+  // ============================================================
+  //  CHIBI DUDE
+  //  Drawn on a 32x40 unit grid (feet at 16,39) inside a 2-cell margin so
+  //  outlines never get clipped; then stamped at any integer scale.
+  // ============================================================
+  const M = 2, GW = 32 + M * 2, GH = 40 + M * 2;
+  const grid = new Int16Array(GW * GH);
+  function gset(x, y, c) { x += M; y += M; if (x >= 0 && y >= 0 && x < GW && y < GH) grid[y * GW + x] = c; }
   function grect(x, y, w, h, c) { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) gset(i, j, c); }
   function gell(cx, cy, rx, ry, c) {
     for (let j = Math.floor(cy - ry); j <= Math.ceil(cy + ry); j++) for (let i = Math.floor(cx - rx); i <= Math.ceil(cx + rx); i++) {
@@ -24,7 +130,6 @@
       if (u * u + v * v <= 1) gset(i, j, c);
     }
   }
-  const get = (x, y) => (x < 0 || y < 0 || x >= GW || y >= GH ? EMPTY : grid[y * GW + x]);
 
   PD.DUDE_DEFAULT = { skin: 'skin0', hair: 'hair1', hairStyle: 'short', shirt: 'cloth2', shirtStyle: 'tee', pants: 'cyan', face: 'blank' };
   PD.drawDude = function (fb, x, y, opt) {
@@ -60,7 +165,15 @@
     else if (hs === 'buzz') { gell(16, 4.4, 6.4, 2.8, C(o.hair, 1)); }
     else if (hs === 'curly') { for (let k = 0; k < 7; k++) gell(10 + k * 2, 3.6 + (k % 2), 2.2, 2.2, HR); grect(9, 4, 2, 5, HR); grect(21, 4, 2, 5, HR); }
     if (o.beard) { gell(16, 13.2, 5.6, 3.2, HR); grect(10, 9, 2, 4, HR); grect(20, 9, 2, 4, HR); grect(14, 12, 4, 1, SK); }
-    if (o.cap) { gell(16, 3.8, 7.2, 3.6, C(o.cap, 2)); grect(9, 5, 14, 2, C(o.cap, 2)); grect(14, 5, 4, 1, SK); grect(14, 5, 4, 1, HR); gset(16, 1, C(o.cap, 4)); }
+    if (o.cap) {
+      // backwards cap: dome, band, the strap gap at the forehead, brim poking out the back (top)
+      const CP = C(o.cap, 2);
+      gell(16, 4.2, 7, 3.6, CP);                       // dome
+      grect(9, 5, 15, 2, C(o.cap, 1));                  // band
+      grect(15, 4, 3, 3, HR); gset(16, 3, HR);          // snapback opening shows hair
+      grect(15, 6, 3, 1, C('ui', 2));                   // strap
+      grect(12, -1, 9, 2, C(o.cap, 1));                 // brim sticking up behind
+    }
     // accessories
     if (o.flag) {
       grect(25, 8, 1, 20, C('wood', 3));
@@ -71,21 +184,11 @@
     if (o.phoneFace) { grect(11, 4, 9, 12, C('ink', 2)); grect(12, 5, 7, 10, C('ink', 3)); gset(13, 6, C('ui', 4)); }
     if (o.bag) { grect(21, 20, 7, 8, C('neon', 2)); grect(22, 18, 1, 2, C('neon', 1)); grect(26, 18, 1, 2, C('neon', 1)); }
 
-    // ---- outline + shade into a colour map ----
-    const out = new Int16Array(GW * GH).fill(EMPTY);
-    for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
-      const v = get(i, j);
-      if (v === EMPTY) {
-        if (get(i - 1, j) !== EMPTY || get(i + 1, j) !== EMPTY || get(i, j - 1) !== EMPTY || get(i, j + 1) !== EMPTY) out[j * GW + i] = INK;
-        continue;
-      }
-      // light from upper-left: darken cells on the right/bottom edge of a region
-      const edge = get(i + 1, j) !== v && get(i + 1, j) !== EMPTY ? 0 : get(i + 1, j) === EMPTY || get(i, j + 1) === EMPTY;
-      const sh = v % 6;
-      out[j * GW + i] = edge && sh > 1 && sh < 5 ? v - 1 : v;
-    }
+    const out = shadeGrid(grid, GW, GH);
+    // cap: highlight on the dome (after shading)
     // ---- face ----
-    const F = (i, j, c) => (out[j * GW + i] = c);
+    const F = (i, j, c) => (out[(j + M) * GW + i + M] = c);
+    if (o.cap) { F(11, 3, C(o.cap, 3)); F(12, 2, C(o.cap, 3)); F(13, 2, C(o.cap, 4)); F(19, 2, C(o.cap, 3)); F(16, 1, C(o.cap, 3)); }
     const ex1 = 13, ex2 = 19, ey = 9;
     const face = o.face;
     if (!o.phoneFace) {
@@ -95,10 +198,8 @@
       else if (face === 'smug') { [ex1, ex2].forEach((e) => { F(e - 1, ey, INK); F(e, ey, INK); F(e - 1, ey - 1, SKd); F(e, ey - 1, SKd); }); }
       else if (face === 'dumb') { F(ex1 + 1, ey, INK); F(ex2 - 1, ey, INK); F(ex1, ey - 1, INK); F(ex2, ey - 1, INK); }
       else { F(ex1, ey, INK); F(ex2, ey, INK); }
-      // brows
       if (face === 'shock') { F(ex1 - 1, ey - 3, HR); F(ex1, ey - 3, HR); F(ex2 - 1, ey - 3, HR); F(ex2, ey - 3, HR); }
       if (face === 'smug') { F(ex1 - 1, ey - 2, HR); F(ex1, ey - 2, HR); F(ex2, ey - 2, HR); F(ex2 + 1, ey - 3, HR); }
-      // mouth
       const my = 13;
       if (face === 'shock') { F(15, my - 1, INK); F(16, my - 1, INK); F(15, my, C('heart', 1)); F(16, my, C('heart', 1)); F(15, my + 1, INK); F(16, my + 1, INK); }
       else if (face === 'happy') { F(14, my - 1, INK); F(15, my, INK); F(16, my, INK); F(17, my, INK); F(18, my - 1, INK); }
@@ -108,20 +209,8 @@
       else { F(15, my, INK); F(16, my, INK); }
       if (o.blush) { F(11, 11, C('heart', 3)); F(12, 11, C('heart', 3)); F(20, 11, C('heart', 3)); F(21, 11, C('heart', 3)); }
     }
-    // ---- stamp ----
-    const ox = Math.round(x - 16 * s), oy = Math.round(y - 39 * s);
-    const r0 = o.rows ? o.rows[0] : 0, r1 = o.rows ? o.rows[1] : GH;
-    const cl = o.clip;
-    for (let j = r0; j < r1; j++) for (let i = 0; i < GW; i++) {
-      const v = out[j * GW + i];
-      if (v === EMPTY) continue;
-      const fx = o.flip ? ox + (GW - 1 - i) * s : ox + i * s, fy = oy + j * s;
-      if (cl && (fx + s <= cl[0] || fy + s <= cl[1] || fx >= cl[0] + cl[2] || fy >= cl[1] + cl[3])) continue;
-      if (cl) {
-        const ax = Math.max(fx, cl[0]), ay = Math.max(fy, cl[1]);
-        fb.rect(ax, ay, Math.min(fx + s, cl[0] + cl[2]) - ax, Math.min(fy + s, cl[1] + cl[3]) - ay, v);
-      } else fb.rect(fx, fy, s, s, v);
-    }
+    stampGrid(fb, out, GW, GH, Math.round(x - (16 + M) * s), Math.round(y - (39 + M) * s), s,
+      { clip: o.clip, flip: o.flip, rows: o.rows ? [o.rows[0] + M, o.rows[1] + M] : null });
   };
 
   // ============================================================
@@ -215,10 +304,10 @@
   }
   // fake app header (black + yellow, mask logo)
   function appHeader(fb, s, title) {
-    fb.rect(s.x, s.y, s.w, 10, C('gold', 2));
-    fb.rect(s.x, s.y + 10, s.w, 1, C('gold', 1));
-    PD.sprite(fb, ['#####', '#.#.#', '#####', '.###.'], s.x + 3, s.y + 3, C('ink', 0));
-    PD.text(fb, title || 'GRINDR', s.x + 11, s.y + 3, C('ink', 0));
+    fb.rect(s.x, s.y, s.w, 11, C('ink', 0));
+    fb.rect(s.x, s.y + 11, s.w, 1, C('gold', 1));
+    PD.drawMask(fb, s.x + 7, s.y + 2, 9, 8);
+    PD.text(fb, title || 'GRINDR', s.x + 14, s.y + 3, C('gold', 2));
   }
   PD.appHeader = appHeader;
   PD.bigPhone = bigPhone;
@@ -251,36 +340,115 @@
   // ============================================================
   //  INTRO CUTSCENE
   // ============================================================
+  const KEY = 255;
+  const popFB = new PD.FB();
+  const easeOutBack = (x) => { x = clamp(x, 0, 1); const c1 = 2.2, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+  // draw something with a scale pop around (cx,cy); k: 0..1 progress
+  function popAt(fb, k, cx, cy, draw) {
+    if (k >= 1) { draw(fb); return; }
+    if (k <= 0) return;
+    popFB.clear(KEY);
+    draw(popFB);
+    fb.blitKey(popFB, cx, cy, 0.25 + 0.75 * easeOutBack(k), KEY);
+  }
+  const seeded = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+  const crossed = (t0, t1, at) => t0 < at && t1 >= at;
+  const beat = (t0, t1, period, start) => t1 > start && Math.floor((t1 - start) / period) !== Math.floor((t0 - start) / period);
+  // in-game style FX word (same look as the sex scene's PLAPs)
+  const fxText = (fb, str, x, y, col) => PD.text(fb, str, Math.round(x - PD.textWidth(str) / 2), y, col || C('ui', 4), C('ui', 0), 1, C('heart', 2));
+
+  // A hand holding the phone: fingers wrap the left edge, thumb over the screen.
+  function phoneHand(fb, px, py, t) {
+    const S3 = C('skin0', 3), B = new Blob(96, 136);
+    const ox = px - 14, oy = py - 4;                 // blob origin; phone (52x92) at px,py
+    const L = 14, Rr = L + 52, Bt = 4 + 92;          // phone left/right/bottom in blob coords
+    const bob = Math.sin(t * 3) * 0.8;
+    // fingers wrap around the left edge from behind: just the tips curl onto the front
+    for (let k = 0; k < 4; k++) { const y = 46 + k * 9; B.cap(L - 5, y, L + 2, y + 1, 3.6, 3.2, S3); }
+    // heel of the hand + wrist under the bottom-right corner
+    B.ell(Rr - 6, Bt + 3, 15, 11, S3);
+    B.cap(Rr - 4, Bt + 6, Rr + 8, Bt + 34, 12, 13, S3);
+    // thumb across the screen
+    B.cap(Rr - 2, Bt - 2, Rr - 18, Bt - 26 + bob, 6.6, 4.8, S3);
+    B.draw(fb, ox, oy, 1, (F) => {
+      const D = C('skin0', 2), N = C('skin0', 4), P = C('heart', 4);
+      for (let k = 0; k < 4; k++) { const y = 46 + k * 9; F(L - 6, y - 2, N); F(L - 5, y - 3, N); F(L - 4, y - 3, N); F(L - 1, y + 3, D); F(L, y + 3, D); F(L + 1, y + 3, D); }
+      const tx = Rr - 18, ty = Bt - 26 + bob;
+      for (let j = -3; j <= 2; j++) for (let i = -3; i <= 3; i++) {
+        const u = (i * 0.85 + j * 0.53) / 3.4, v = (-i * 0.53 + j * 0.85) / 2.6;
+        if (u * u + v * v <= 1) F(tx + i + 1, ty + j + 1, v < -0.35 ? N : P);
+      }
+      for (let k = 0; k < 4; k++) F(Rr - 9 + k, Bt - 12 + bob + k, D);   // thumb knuckle crease
+      for (let k = 0; k < 6; k++) F(Rr - 14 + k * 2, Bt + 8 + (k > 2 ? 1 : 0), D); // palm line
+    });
+  }
+  // Big thumb for the CREATE PROFILE press (tip at tx,ty, comes in from bottom-right)
+  function bigThumb(fb, tx, ty) {
+    const S3 = C('skin0', 3), B = new Blob(40, 50);
+    B.cap(34, 50, 9, 8, 10, 7.5, S3);
+    B.ell(30, 44, 11, 9, S3);
+    B.draw(fb, tx - 18, ty - 10, 2, (F) => {
+      const N = C('skin0', 4), P = C('heart', 4), D = C('skin0', 2);
+      for (let j = -4; j <= 4; j++) for (let i = -4; i <= 4; i++) {
+        const u = (i * 0.8 + j * 0.6) / 4.6, v = (-i * 0.6 + j * 0.8) / 3.6;
+        if (u * u + v * v <= 1) F(9 + i, 6 + j, v < -0.3 ? N : P);
+      }
+      for (let k = 0; k < 4; k++) F(15 + k, 22 - k, D);
+      for (let k = 0; k < 3; k++) F(16 + k, 25 - k, D);
+    });
+  }
+  function sparkle(fb, x, y, r, c) {
+    fb.px(x, y, C('ui', 4));
+    for (let k = 1; k <= r; k++) { fb.px(x + k, y, c); fb.px(x - k, y, c); fb.px(x, y + k, c); fb.px(x, y - k, c); }
+  }
+
   const SHOTS = [
     { // 1. the town
       panels: [{ r: [8, 8, 304, 118], d(fb, t, R) {
         PD.drawSkyline(fb, 4 + t * 0.6, 0);
-        // rooftop pride flag
         const fx = R.x + 220, fy = R.y + 38;
         fb.rect(fx, fy, 1, 22, C('ui', 3));
-        for (let j = 0; j < 6; j++) for (let i = 0; i < 16; i++) fb.px(fx + 1 + i, fy + j * 1.5 + Math.sin(t * 4 + i * 0.5) * 1.2, C('pride', j));
+        for (let j = 0; j < 6; j++) for (let i = 0; i < 16; i++) fb.px(fx + 1 + i, fy + j * 1.5 + Math.sin(t * 4 + i * 0.5) * 1.2 * (i / 16), C('pride', j));
+        // shooting star
+        const p = ((t + 1.2) % 3.4) / 0.55;
+        if (p < 1) {
+          const hx = R.x + 30 + p * 150, hy = R.y + 6 + p * 34;
+          for (let k = 0; k < 12; k++) fb.px(hx - k * 2.2, hy - k * 0.5, k < 2 ? C('ui', 4) : k < 6 ? C('cyan', 3) : C('cyan', 1));
+        }
       } }],
       caps: ['This town has a problem.', 'Too many rainbows. Not nearly enough pussy.'],
-      bubbles: [{ at: 1, x: 40, y: 50, text: 'YAAAS QUEEN', tx: 60, ty: 76 }, { at: 1, x: 150, y: 28, text: 'SLAAAY', tx: 170, ty: 52 }],
+      bubbles: [{ at: 1, x: 40, y: 50, text: 'YAAAS QUEEN', tx: 60, ty: 76 }, { at: 1, x: 150, y: 28, text: 'SLAAAY', tx: 170, ty: 52, delay: 0.25 }],
     },
     { // 2. the app
       panels: [
         { r: [8, 8, 112, 118], d(fb, t, R) {
           fb.rect(R.x, R.y, R.w, R.h, C('night', 1));
-          for (let k = 0; k < 6; k++) fb.ellipse(R.x + R.w / 2, R.y + 60, 50 - k * 7, 50 - k * 7, C('gold', 1), 0.06 * k);
-          PD.drawPhone(fb, R.x + 31, R.y + 14, t, Math.sin(t * 3) > 0.6, '10,000 ONLINE');
-          fb.ellipse(R.x + 80, R.y + 102, 9, 14, C('skin0', 3));
-          fb.ellipse(R.x + 79, R.y + 92, 5, 5, C('skin0', 4));
+          for (let k = 0; k < 6; k++) fb.ellipse(R.x + R.w / 2, R.y + 56, 50 - k * 7, 50 - k * 7, C('gold', 1), 0.06 * k);
+          const buzz = t > 0.6 && ((t - 0.6) % 1.4) < 0.3;
+          const px = R.x + 31, py = R.y + 10;
+          PD.drawPhone(fb, px, py, t, buzz, '10,000 ONLINE');
+          phoneHand(fb, px, py, t);
+          if (buzz) {
+            for (let k = 0; k < 3; k++) { fb.px(px - 4 - k, py + 20 + k * 3, C('gold', 3)); fb.px(px + 56 + k, py + 20 + k * 3, C('gold', 3)); }
+            popAt(fb, ((t - 0.6) % 1.4) / 0.12, px + 26, py - 3, (f) => fxText(f, 'BZZT', px + 26, py - 5, C('gold', 4)));
+          }
         } },
         { r: [126, 8, 186, 118], d(fb, t, R) {
           fb.rect(R.x, R.y, R.w, R.h, C('ink', 0));
           const names = [['MASC4MASC', '0.2MI', CAST.masc], ['SMOOTHBTM', '0.4MI', CAST.smooth], ['NO FEMS', '0.1MI', CAST.nofems],
             ['BEAR W/ CAR', '1MI', CAST.bear], ['TOP 4 TOP', '0.3MI', CAST.top], ['TWINK 21', '50FT', CAST.twink]];
-          names.forEach(([n, d, dude], i) => tile(fb, R.x + 3 + (i % 3) * 61, R.y + 3 + Math.floor(i / 3) * 57, 59, 55, dude, n, d, t, i));
+          names.forEach(([n, d, dude], i) => {
+            const x = R.x + 3 + (i % 3) * 61, y = R.y + 3 + Math.floor(i / 3) * 57;
+            popAt(fb, (t - 0.5 - i * 0.13) / 0.22, x + 29, y + 27, (f) => tile(f, x, y, 59, 55, dude, n, d, t, i));
+          });
         } },
       ],
-      caps: ['10,000 fags online. Within one mile.', "Not one of them has ever touched a tit. They brag about it."],
-      bubbles: [{ at: 0, x: 158, y: 62, text: 'WOOF', tx: 152, ty: 82 }, { at: 1, x: 238, y: 66, text: 'NO FEMS NO FATS\nNO VAGINAS EW', tx: 284, ty: 46 }],
+      tick(sc, t0, t1) {
+        if (beat(t0, t1, 1.4, 0.6) || crossed(t0, t1, 0.6)) PD.Audio.ui('buzz');
+        for (let i = 0; i < 6; i++) if (crossed(t0, t1, 0.5 + i * 0.13)) PD.Audio.ui('ping');
+      },
+      caps: ['10,000 fags online. Within one mile.', 'Not one of them has ever touched a tit. They brag about it.'],
+      bubbles: [{ at: 0, x: 158, y: 62, text: 'WOOF', tx: 152, ty: 82, delay: 0.6 }, { at: 1, x: 238, y: 66, text: 'NO FEMS NO FATS\nNO VAGINAS EW', tx: 284, ty: 46 }],
     },
     { // 3. the operator
       panels: [
@@ -288,131 +456,204 @@
           const X = R.x, Y = R.y;
           fb.rect(X, Y, R.w, R.h, C('wall', 0));
           fb.drect(X, Y, R.w, R.h, C('wall', 1), 0.5);
-          // corkboard + red strings
           fb.rect(X + 8, Y + 10, 58, 44, C('ink', 0)); fb.rect(X + 9, Y + 11, 56, 42, C('wood', 2));
           const pins = [[16, 16], [40, 14], [54, 26], [20, 36], [42, 40]];
-          pins.forEach(([px, py], i) => { fb.rect(X + px - 4, Y + py - 3, 10, 9, C('ui', 4)); fb.rect(X + px - 3, Y + py - 2, 8, 6, C('night', 3));
-            fb.line(X + px + 1, Y + py + 2, X + px + 3, Y + py, C('cloth1', 3)); fb.line(X + px + 1, Y + py, X + px + 3, Y + py + 2, C('cloth1', 3)); void i; });
-          for (let i = 0; i < pins.length - 1; i++) fb.line(X + pins[i][0], Y + pins[i][1] - 3, X + pins[i + 1][0], Y + pins[i + 1][1] - 3, C('cloth1', 3));
-          // monitors
+          pins.forEach(([px, py], i) => {
+            fb.rect(X + px - 4, Y + py - 3, 10, 9, C('ui', 4)); fb.rect(X + px - 3, Y + py - 2, 8, 6, C('night', 3));
+            PD.drawDude(fb, X + px + 1, Y + py + 30, Object.assign({ s: 1, clip: [X + px - 3, Y + py - 2, 8, 6] }, Object.values(CAST)[i + 2]));
+            fb.line(X + px - 2, Y + py - 1, X + px + 4, Y + py + 3, C('cloth1', 3)); fb.line(X + px - 2, Y + py + 3, X + px + 4, Y + py - 1, C('cloth1', 3));
+            fb.px(X + px + 1, Y + py - 4, C('cloth1', 4));
+          });
+          for (let i = 0; i < pins.length - 1; i++) fb.line(X + pins[i][0] + 1, Y + pins[i][1] - 4, X + pins[i + 1][0] + 1, Y + pins[i + 1][1] - 4, C('cloth1', 2));
           for (let m = 0; m < 3; m++) {
             const mx = X + 82 + m * 36, my = Y + 14 + (m === 1 ? -4 : 0);
-            fb.rect(mx, my, 32, 24, C('ink', 0)); fb.rect(mx + 2, my + 2, 28, 20, C('night', 2));
-            fb.rect(mx + 2, my + 2, 28, 3, C('gold', 2));
+            fb.rect(mx, my, 32, 24, C('ink', 0)); fb.rect(mx + 2, my + 2, 28, 20, C('ink', 1));
+            fb.rect(mx + 2, my + 2, 28, 3, C('ink', 0)); PD.drawMask(fb, mx + 6, my + 2, 9, 8);
             for (let k = 0; k < 6; k++) fb.rect(mx + 3 + (k % 3) * 9, my + 7 + Math.floor(k / 3) * 7, 8, 6, C('night', 4 - ((k + m + Math.floor(t * 2)) % 2)));
+            const sl = (t * 14 + m * 9) % 26;
+            fb.drect(mx + 2, my + 2 + sl, 28, 2, C('ui', 4), 0.2);
           }
-          // desk
           fb.rect(X, Y + 88, R.w, 30, C('wood', 1)); fb.rect(X, Y + 88, R.w, 2, C('wood', 3));
-          // glow + operator from behind (hoodie, no face)
           fb.ellipse(X + 100, Y + 66, 46, 30, C('gold', 1), 0.18 + Math.sin(t * 3) * 0.04);
-          const ox = X + 100, oy = Y + 70;
-          // shoulders + back (a bust, runs off the bottom of the panel)
-          fb.ellipse(ox, oy + 24, 37, 14, C('ink', 0));
-          fb.rect(ox - 37, oy + 24, 74, 60, C('ink', 0));
-          fb.ellipse(ox, oy + 24, 36, 13, C('ink', 2));
-          fb.rect(ox - 36, oy + 24, 72, 60, C('ink', 2));
+          const ox = X + 100, oy = Y + 70 + Math.round(Math.sin(t * 1.6) * 0.6);
+          fb.ellipse(ox, oy + 24, 37, 14, C('ink', 0)); fb.rect(ox - 37, oy + 24, 74, 60, C('ink', 0));
+          fb.ellipse(ox, oy + 24, 36, 13, C('ink', 2)); fb.rect(ox - 36, oy + 24, 72, 60, C('ink', 2));
           fb.ellipse(ox - 14, oy + 22, 14, 7, C('ink', 3), 0.45);
-          // hood with a soft peak + seam
-          fb.ellipse(ox, oy - 1, 16, 19, C('ink', 0));
-          fb.ellipse(ox, oy - 1, 15, 18, C('ink', 2));
+          fb.ellipse(ox, oy - 1, 16, 19, C('ink', 0)); fb.ellipse(ox, oy - 1, 15, 18, C('ink', 2));
           fb.ellipse(ox - 4, oy - 6, 8, 10, C('ink', 3), 0.5);
           fb.line(ox, oy - 18, ox, oy + 16, C('ink', 1));
           fb.rect(ox - 22, oy + 30, 1, 30, C('ink', 1)); fb.rect(ox + 22, oy + 30, 1, 30, C('ink', 1));
-          // rim light from the screens
           for (let a = -2.6; a < -0.5; a += 0.03) fb.px(ox + Math.cos(a) * 16, oy - 2 + Math.sin(a) * 18, C('cyan', 2));
-          // energy drink cans
-          [[22, 80], [30, 82], [160, 80]].forEach(([cx, cy]) => { fb.rect(X + cx, Y + cy, 6, 9, C('ink', 0)); fb.rect(X + cx + 1, Y + cy + 1, 4, 7, C('lime', 2)); });
+          [[22, 80], [30, 82], [160, 80]].forEach(([cx, cy]) => { fb.rect(X + cx, Y + cy, 6, 9, C('ink', 0)); fb.rect(X + cx + 1, Y + cy + 1, 4, 7, C('lime', 2)); fb.rect(X + cx + 1, Y + cy + 1, 1, 7, C('lime', 4)); });
         } },
         { r: [210, 8, 102, 118], d(fb, t, R) {
           const X = R.x, Y = R.y;
           radial(fb, R, X + 50, Y + 60, C('neon', 1), C('neon', 5), t);
-          // the toolkit
-          const item = (x, y, w, h, ramp, label, lc) => { fb.rect(x - 1, y - 1, w + 2, h + 2, C('ink', 0)); fb.rect(x, y, w, h, C(ramp, 2)); fb.rect(x, y, 2, h, C(ramp, 3)); PD.text(fb, label, x + (w - PD.textWidth(label)) / 2, y + (h >> 1) - 2, lc || C('ink', 0)); };
-          item(X + 10, Y + 20, 22, 44, 'cyan', 'LUBE');
-          item(X + 38, Y + 30, 26, 34, 'ui', 'VODKA');
-          item(X + 68, Y + 46, 26, 18, 'neon', 'XXL');
-          fb.rect(X + 12, Y + 74, 78, 8, C('ink', 0)); fb.rect(X + 13, Y + 75, 76, 6, C('ink', 3));
-          PD.text(fb, 'BLINDFOLD', X + 34, Y + 76, C('ui', 4));
-          PD.textS(fb, 'THE KIT', X + R.w / 2, Y + 94, 2, C('gold', 3), { center: true, outline: C('ink', 0) });
-          void t;
+          const item = (k, x, y, w, h, ramp, label, lc) => {
+            const a = clamp((t - 0.7 - k * 0.22) / 0.25, 0, 1);
+            if (a <= 0) return;
+            const yo = Math.round(-(1 - a) * (1 - a) * 70), sq = a >= 1 && t - 0.95 - k * 0.22 < 0.08 ? 1 : 0;
+            y += yo + sq; h -= sq;
+            fb.rect(x - 1, y - 1, w + 2, h + 2, C('ink', 0)); fb.rect(x, y, w, h, C(ramp, 2)); fb.rect(x, y, 2, h, C(ramp, 3)); fb.rect(x + w - 2, y, 2, h, C(ramp, 1));
+            PD.text(fb, label, x + (w - PD.textWidth(label)) / 2, y + (h >> 1) - 2, lc || C('ink', 0));
+          };
+          item(0, X + 10, Y + 20, 22, 44, 'cyan', 'LUBE');
+          item(1, X + 38, Y + 30, 26, 34, 'ui', 'VODKA');
+          item(2, X + 68, Y + 46, 26, 18, 'neon', 'XXL');
+          const a = clamp((t - 1.36) / 0.2, 0, 1);
+          if (a > 0) { const yo = Math.round(-(1 - a) * 40); fb.rect(X + 12, Y + 74 + yo, 78, 8, C('ink', 0)); fb.rect(X + 13, Y + 75 + yo, 76, 6, C('ink', 3)); PD.text(fb, 'BLINDFOLD', X + 34, Y + 76 + yo, C('ui', 4)); }
+          popAt(fb, (t - 1.7) / 0.25, X + R.w / 2, Y + 99, (f) => PD.textS(f, 'THE KIT', X + R.w / 2, Y + 94, 2, C('gold', 3), { center: true, outline: C('ink', 0) }));
         } },
       ],
+      tick(sc, t0, t1) {
+        for (let k = 0; k < 4; k++) if (crossed(t0, t1, 0.95 + k * 0.22 - (k === 3 ? 0.03 : 0))) PD.Audio.ui('thud');
+        if (crossed(t0, t1, 1.7)) PD.Audio.ui('pop');
+      },
       caps: ["That's me. No face. No name.", 'Just a phone, a fake profile, a bottle of lube...', 'and a pussy that has never once lost.'],
       bubbles: [],
     },
     { // 4. before / during / after
+      enter(sc) { sc.doorFX = new PD.FX(); sc.beats = 0; },
       panels: [
         { r: [8, 8, 96, 118], d(fb, t, R) {
           radial(fb, R, R.x + 48, R.y + 50, C('heart', 3), C('heart', 2), t);
-          PD.drawDude(fb, R.x + 48, R.y + 116, Object.assign({ s: 2 }, CAST.twinkPride));
+          for (let i = 0; i < 9; i++) {
+            const tw = Math.sin(t * 4 + i * 1.7);
+            if (tw > 0.2) sparkle(fb, R.x + 6 + seeded(i) * 84, R.y + 20 + seeded(i + 9) * 90, tw > 0.75 ? 2 : 1, C(i % 2 ? 'gold' : 'cyan', 3));
+          }
+          PD.drawDude(fb, R.x + 48, R.y + 116 + Math.round(Math.abs(Math.sin(t * 5)) * -1), Object.assign({ s: 2 }, CAST.twinkPride));
           PD.textS(fb, 'BEFORE', R.x + 4, R.y + 4, 1, C('ui', 4), { outline: C('ink', 0) });
         } },
-        { r: [110, 8, 100, 118], d(fb, t, R) {
-          const X = R.x, Y = R.y, sh = Math.round(Math.sin(t * 40));
+        { r: [110, 8, 100, 118], d(fb, t, R, sc) {
+          const X = R.x, Y = R.y, P = 0.5;
+          const n = Math.floor((t - 0.6) / P), ph = t > 0.6 ? ((t - 0.6) % P) / P : 1;
+          const jolt = ph < 0.3 ? (1 - ph / 0.3) * 3 : 0;
+          const dx = Math.round(jolt * (n % 2 ? 1 : -1)), by = ph < 0.12 ? 1 : 0;
           fb.rect(X, Y, R.w, R.h, C('wall', 1));
-          fb.rect(X + 26 + sh, Y + 18, 48, 100, C('ink', 0)); fb.rect(X + 28 + sh, Y + 20, 44, 98, C('wood', 2));
-          fb.rect(X + 32 + sh, Y + 26, 36, 36, C('wood', 3)); fb.rect(X + 32 + sh, Y + 70, 36, 40, C('wood', 3));
-          fb.ellipse(X + 64 + sh, Y + 70, 2.5, 2.5, C('gold', 3));
-          PD.sprite(fb, PD.HEART, X + 48 + sh, Y + 10, C('heart', 2), C('ink', 0));
-          fxWord(fb, 'CREAK', X + 4, Y + 30, 1, 'gold', t, 1);
-          fxWord(fb, 'SLAP', X + 72, Y + 54, 1, 'neon', t, 2);
-          fxWord(fb, 'PLAP', X + 4, Y + 70, 1, 'neon', t, 3);
-          fxWord(fb, 'OH GOD', X + 62, Y + 84, 1, 'cyan', t, 4);
+          fb.drect(X, Y, R.w, R.h, C('wall', 2), 0.25);
+          // frame
+          const dX = X + 26, dY = Y + 30 + by;
+          fb.rect(dX - 4, dY - 4, 56, 100, C('wood', 1)); fb.rect(dX - 3, dY - 3, 54, 99, C('wood', 3));
+          fb.rect(dX - 1, dY - 1, 50, 98, C('ink', 0));
+          // pink light leaking around the door, pulsing with each slam
+          const glow = 0.35 + (ph < 0.35 ? (1 - ph / 0.35) * 0.65 : 0);
+          fb.rect(dX - 1, dY - 1, 50, 98, glow > 0.6 ? C('neon', 4) : C('neon', 3));
+          fb.drect(dX - 10, dY - 8, 70, 110, C('neon', 1), (glow - 0.3) * 0.35);
+          fb.rect(dX - 4, dY - 4, 56, 3, C('wood', 3)); fb.rect(dX - 4, dY - 4, 3, 100, C('wood', 3)); fb.rect(dX + 49, dY - 4, 3, 100, C('wood', 3));
+          // the door itself
+          fb.rect(dX + 1 + dx, dY + 1, 46, 96, C('ink', 0)); fb.rect(dX + 2 + dx, dY + 2, 44, 94, C('wood', 2));
+          fb.rect(dX + 6 + dx, dY + 7, 36, 32, C('wood', 3)); fb.rect(dX + 6 + dx, dY + 7, 36, 1, C('wood', 4)); fb.rect(dX + 6 + dx, dY + 38, 36, 1, C('wood', 1));
+          fb.rect(dX + 6 + dx, dY + 46, 36, 44, C('wood', 3)); fb.rect(dX + 6 + dx, dY + 46, 36, 1, C('wood', 4)); fb.rect(dX + 6 + dx, dY + 89, 36, 1, C('wood', 1));
+          fb.ellipse(dX + 38 + dx, dY + 44, 2.5, 2.5, C('gold', 3)); fb.px(dX + 37 + dx, dY + 43, C('gold', 4));
+          // DO NOT DISTURB tag swinging on the knob
+          const sw = Math.sin(t * 9) * jolt * 0.8;
+          fb.line(dX + 38 + dx, dY + 44, dX + 36 + dx + sw, dY + 50, C('ink', 0));
+          fb.rect(dX + 31 + dx + Math.round(sw), dY + 50, 12, 14, C('ink', 0)); fb.rect(dX + 32 + dx + Math.round(sw), dY + 51, 10, 12, C('neon', 2));
+          PD.sprite(fb, ['#.#', '###', '.#.'], dX + 35 + dx + Math.round(sw), dY + 55, C('ui', 4));
+          // dust shaken off the frame
+          if (ph < 0.7 && t > 0.6) for (let d = 0; d < 6; d++) fb.px(dX + 2 + seeded(n * 7 + d) * 46, dY - 2 + ph * (14 + d * 4), C('wood', 4));
+          sc.doorFX.draw(fb);
         } },
         { r: [216, 8, 96, 118], d(fb, t, R) {
           radial(fb, R, R.x + 48, R.y + 50, C('cyan', 1), C('cyan', 5), t);
-          // pennant
-          fb.rect(R.x + 6, R.y + 18, 1, 20, C('ui', 4));
-          for (let i = 0; i < 22; i++) { const hh = Math.round(10 * (1 - i / 22)); fb.rect(R.x + 7 + i, R.y + 18 + 10 - hh, 1, hh * 2, i === 0 || hh < 1 ? C('ink', 0) : C('cloth1', 2)); }
-          PD.text(fb, 'U', R.x + 10, R.y + 26, C('ui', 4));
+          // party bunting strung across the top
+          const pts = [];
+          for (let i = 0; i <= 8; i++) { const f = i / 8; pts.push([R.x + f * R.w, R.y + 12 + Math.sin(f * Math.PI) * 7 + Math.sin(t * 2 + f * 3) * 0.8]); }
+          for (let i = 0; i < 8; i++) fb.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], C('ink', 0));
+          for (let i = 0; i < 8; i++) {
+            const [ax, ay] = pts[i], [bx, by2] = pts[i + 1], col = i % 2 ? C('ui', 4) : C('cloth1', 2), sway = Math.sin(t * 3 + i) * 1.5;
+            for (let r = 0; r < 9; r++) {
+              const f = r / 9, wv = (1 - f) * (bx - ax - 3) / 2, cx = (ax + bx) / 2 + sway * f, cy = (ay + by2) / 2 + r;
+              fb.rect(Math.round(cx - wv) - 1, Math.round(cy), Math.round(wv * 2) + 2, 1, C('ink', 0));
+              if (wv > 0.6) fb.rect(Math.round(cx - wv), Math.round(cy), Math.round(wv * 2), 1, col);
+            }
+          }
+          // beer can foam drips
           PD.drawDude(fb, R.x + 48, R.y + 116, Object.assign({ s: 2 }, CAST.twinkStraight));
-          PD.textS(fb, 'AFTER', R.x + R.w - 24, R.y + 4, 1, C('ui', 4), { outline: C('ink', 0) });
+          for (let k = 0; k < 3; k++) { const p = ((t * 0.9 + k * 0.33) % 1); fb.px(R.x + 33 + k, R.y + 82 + p * 20, C('fluid', 4)); }
+          PD.textS(fb, 'AFTER', R.x + R.w - 24, R.y + 28, 1, C('ui', 4), { outline: C('ink', 0) });
         } },
       ],
+      tick(sc, t0, t1, dt) {
+        const R = { x: 110, y: 8 }, P = 0.5;
+        if (t1 > 0.6 && beat(t0, t1, P, 0.6) || crossed(t0, t1, 0.6)) {
+          const n = sc.beats++;
+          const words = ['SLAP', 'PLAP', 'CREAK', 'PLAP♥', 'SLAP', 'OH GOD', 'PLAP', 'FUCK♥', 'CREAK', 'HNNG♥'];
+          const w = words[n % words.length];
+          const side = n % 2 ? 1 : -1;
+          sc.doorFX.word(clamp(R.x + 50 + side * (14 + seeded(n) * 16), R.x + 18, R.x + 82), R.y + 34 + (n % 3) * 24 + seeded(n + 5) * 6, w, w.includes('♥') || w === 'OH GOD' ? C('heart', 3) : C('ui', 4), { vy: -14, life: 1.1 });
+          if (n % 2 === 0) sc.doorFX.heart(R.x + 50 + (seeded(n + 2) - 0.5) * 30, R.y + 34, n % 4 === 0);
+          PD.Audio.slap(1 + (n % 3) * 0.15, 0.7);
+          if (n % 2) PD.Audio.creak();
+          if (n % 4 === 3) SM.shake = 0.05 * PD.Settings.shake;
+        }
+        sc.doorFX.update(dt, 0);
+      },
       caps: ['One night with it and they walk out straight.', 'Limping, sometimes. But straight.'],
-      bubbles: [{ at: 0, x: 12, y: 22, text: 'EW A VAGINA?\nGROSS!', tx: 40, ty: 54 }, { at: 0, x: 134, y: 104, text: "WHY IS IT\nSO WARM", tx: 150, ty: 92 }, { at: 1, x: 252, y: 22, text: 'BRO.\nTITS.', tx: 262, ty: 54, shout: true }],
+      bubbles: [{ at: 0, x: 12, y: 22, text: 'EW A VAGINA?\nGROSS!', tx: 40, ty: 54 }, { at: 0, x: 134, y: 104, text: 'WHY IS IT\nSO WARM', tx: 150, ty: 92, delay: 1.2 },
+        { at: 1, x: 220, y: 40, text: 'BRO.\nTITS.', tx: 246, ty: 70, shout: true, sfx: 'scratch', shake: 0.2 }],
     },
     { // 5. the goal
       panels: [{ r: [8, 8, 304, 118], d(fb, t, R) {
         const X = R.x, Y = R.y;
         fb.rect(X, Y, R.w, R.h, C('ink', 0));
         for (let y = Y; y < Y + R.h; y += 2) fb.rect(X, y, R.w, 1, C('ink', 1));
-        // app icon in the crosshair
-        const cx = X + 60, cy = Y + 58;
-        fb.rect(cx - 22, cy - 22, 44, 44, C('ink', 0)); fb.rect(cx - 21, cy - 21, 42, 42, C('gold', 2)); fb.rect(cx - 21, cy - 21, 42, 3, C('gold', 3));
-        const mask = ['#########', '#########', '##.###.##', '#########', '#########', '.#######.', '..#####..'];
-        for (let j = 0; j < mask.length; j++) for (let i = 0; i < 9; i++) if (mask[j][i] === '#') fb.rect(cx - 13 + i * 3, cy - 12 + j * 3, 3, 3, C('ink', 0));
-        const k = 30 + Math.sin(t * 2) * 3;
-        for (let a = 0; a < Math.PI * 2; a += 0.02) fb.px(cx + Math.cos(a) * k, cy + Math.sin(a) * k, C('cloth1', 3));
-        fb.rect(cx - k - 6, cy, k * 2 + 12, 1, C('cloth1', 3)); fb.rect(cx, cy - k - 6, 1, k * 2 + 12, C('cloth1', 3));
-        // the number
-        PD.textS(fb, 'GUYS ONLINE', X + 200, Y + 26, 1, C('cyan', 3), { center: true });
-        PD.textS(fb, '10,000', X + 200, Y + 40, 6, C('neon', 2), { center: true, outline: C('ink', 0), shadow: C('neon', 5), shadowOff: 3, shine: C('neon', 4) });
-        PD.textS(fb, 'TARGET: 0', X + 200, Y + 84, 2, C('gold', 3), { center: true, outline: C('ink', 0) });
+        const cx = X + 62, cy = Y + 58;
+        // app icon: black rounded tile, yellow mask
+        fb.rect(cx - 25, cy - 23, 50, 46, C('gold', 1)); fb.rect(cx - 23, cy - 25, 46, 50, C('gold', 1));
+        fb.rect(cx - 24, cy - 22, 48, 44, C('ink', 0)); fb.rect(cx - 22, cy - 24, 44, 48, C('ink', 0));
+        PD.drawMask(fb, cx, cy - 17, 34, 34);
+        // crosshair zooms in, then locks
+        const lk = clamp((t - 1.9) / 0.35, 0, 1), k = 48 - easeOut(lk) * 18 + (lk >= 1 ? 0 : Math.sin(t * 9) * 2);
+        const col = lk >= 1 && Math.sin(t * 14) > -0.2 ? C('cloth1', 4) : C('cloth1', 3);
+        for (let a = 0; a < Math.PI * 2; a += 0.015) fb.px(cx + Math.cos(a) * k, cy + Math.sin(a) * k, col);
+        fb.rect(cx - k - 8, cy, 14, 1, col); fb.rect(cx + k - 6, cy, 14, 1, col); fb.rect(cx, cy - k - 8, 1, 14, col); fb.rect(cx, cy + k - 6, 1, 14, col);
+        if (lk >= 1 && Math.sin(t * 8) > 0) PD.textS(fb, 'LOCKED', cx, cy + 34, 1, C('cloth1', 4), { center: true, outline: C('ink', 0) });
+        // the number rolls up
+        const v = Math.round(easeOut((t - 0.5) / 1.2) * 10000);
+        const str = v.toLocaleString('en-US');
+        PD.textS(fb, 'GUYS ONLINE', X + 204, Y + 26, 1, C('cyan', 3), { center: true });
+        PD.textS(fb, str, X + 204, Y + 40, 6, C('neon', 2), { center: true, outline: C('ink', 0), shadow: C('neon', 5), shadowOff: 3, shine: C('neon', 4) });
+        if (t > 1.8) popAt(fb, (t - 1.8) / 0.25, X + 204, Y + 89, (f) => PD.textS(f, 'TARGET: 0', X + 204, Y + 84, 2, C('gold', 3), { center: true, outline: C('ink', 0) }));
       } }],
+      tick(sc, t0, t1) {
+        if (t1 > 0.5 && t1 < 1.7 && beat(t0, t1, 0.045, 0.5)) PD.Audio.ui('tick');
+        if (crossed(t0, t1, 1.8)) PD.Audio.ui('pop');
+        if (crossed(t0, t1, 2.25)) { PD.Audio.ui('lock'); SM.shake = 0.08 * PD.Settings.shake; }
+      },
       caps: ['The goal: get that number to zero.', 'Make Grindr go extinct. One twink at a time.'],
       bubbles: [],
     },
     { // 6. create profile
-      panels: [{ r: [70, 8, 180, 118], d(fb, t, R, sh) {
+      panels: [{ r: [70, 8, 180, 118], d(fb, t, R, sc) {
         const X = R.x, Y = R.y;
         radial(fb, R, X + 90, Y + 60, C('night', 2), C('night', 1), t);
         const s = bigPhone(fb, X + 50, Y + 6, 80, 128);
-        fb.rect(s.x, s.y, s.w, s.h, C('ink', 1));
+        fb.rect(s.x, s.y, s.w, s.h, C('ink', 0));
         appHeader(fb, s);
-        PD.drawDude(fb, s.x + s.w / 2, s.y + 60, { s: 1, face: 'blank', skin: 'ink', hair: 'ink', shirt: 'ink', pants: 'ink', hairStyle: 'none', rows: [0, 30] });
-        PD.textS(fb, 'NO PROFILE', s.x + s.w / 2, s.y + 64, 1, C('ink', 4), { center: true });
-        const press = sh.cap >= 1 && sh.done;
-        const bp = press && Math.sin(t * 10) > 0;
-        fb.rect(s.x + 5, s.y + 78, s.w - 10, 14, C('ink', 0));
-        fb.rect(s.x + 6, s.y + 79 + (bp ? 1 : 0), s.w - 12, 12, C('gold', bp ? 3 : 2));
-        PD.text(fb, 'CREATE PROFILE', s.x + s.w / 2 - 27, s.y + 83 + (bp ? 1 : 0), C('ink', 0));
-        // thumb sliding in
-        const k = easeOut(sh.tc * 0.8);
-        const thx = X + 172 - k * 50, thy = Y + 140 - k * 30;
-        fb.ellipse(thx, thy, 12, 22, C('ink', 0)); fb.ellipse(thx, thy, 11, 21, C('skin0', 3));
-        fb.ellipse(thx - 3, thy - 12, 6, 7, C('skin0', 4)); fb.ellipse(thx - 3, thy - 13, 4, 4.5, C('heart', 4));
+        fb.rect(s.x + s.w / 2 - 14, s.y + 22, 28, 30, C('ink', 2));
+        PD.drawDude(fb, s.x + s.w / 2, s.y + 64, { s: 1, face: 'none', skin: 'ink', hair: 'ink', shirt: 'ink', pants: 'ink', hairStyle: 'none', clip: [s.x + s.w / 2 - 14, s.y + 22, 28, 30] });
+        PD.textS(fb, 'NO PROFILE', s.x + s.w / 2, s.y + 60, 1, C('ink', 4), { center: true });
+        const tc = sc.cap >= 1 ? sc.tc : -1;
+        const pressed = tc > 0.75 && tc < 1.05;
+        const bx = s.x + 5, by = s.y + 78 + (pressed ? 1 : 0);
+        fb.rect(bx, s.y + 78, s.w - 10, 15, C('ink', 0));
+        fb.rect(bx + 1, by + 1, s.w - 12, 12, C('gold', pressed ? 3 : 2)); fb.rect(bx + 1, by + 1, s.w - 12, 1, C('gold', 4));
+        PD.text(fb, 'CREATE PROFILE', bx + 5, by + 5, C('ink', 0));
+        if (tc > 0.75) for (let r = 0; r < 2; r++) {
+          const rr = (tc - 0.75 - r * 0.12) * 70;
+          if (rr > 0 && rr < 46) for (let a = 0; a < Math.PI * 2; a += 0.04) {
+            const px = bx + 58 + Math.cos(a) * rr, py = by + 7 + Math.sin(a) * rr * 0.6;
+            if (PD.bayer(Math.round(px), Math.round(py)) < 1 - rr / 46) fb.px(px, py, C('gold', 4));
+          }
+        }
+        if (tc > 0.75) popAt(fb, (tc - 0.75) / 0.15, bx + 66, by - 8, (f) => fxText(f, 'TAP', bx + 66, by - 10, C('ui', 4)));
+        if (tc >= 0) {
+          const k = easeOut(tc / 0.7), push = pressed ? 2 : 0;
+          bigThumb(fb, bx + 70 + (1 - k) * 60, by + 6 + (1 - k) * 70 + push);
+        }
       } }],
+      tick(sc, t0, t1) { if (sc.cap >= 1 && sc.tc - (t1 - t0) < 0.75 && sc.tc >= 0.75) { PD.Audio.ui('click'); SM.shake = 0.05 * PD.Settings.shake; } },
       caps: ['Step one: become the gayest man on the app.', 'On paper. No homo.'],
       bubbles: [],
     },
@@ -420,23 +661,41 @@
 
   const CPS = [24, 48, 110];
   SM.scenes.intro = {
-    enter() { this.shot = 0; this.cap = 0; this.shown = 0; this.t = 0; this.tc = 0; this.tick = 0; this.art = this.art || new PD.FB(); },
+    enter() { this.art = this.art || new PD.FB(); this.shot = 0; this.startShot(); },
+    startShot() {
+      this.cap = 0; this.shown = 0; this.t = 0; this.tc = 0; this.bt = [];
+      const S = SHOTS[this.shot];
+      if (S.enter) S.enter(this);
+    },
     idle(dt) { this.t += dt; },
     update(dt) {
+      const t0 = this.t;
       this.t += dt; this.tc += dt;
       const S = SHOTS[this.shot], cap = up(S.caps[this.cap]);
+      // panel whoosh + landing thud
+      S.panels.forEach((p, i) => { if (crossed(t0, this.t, i * 0.2 + 0.001)) PD.Audio.ui('whoosh'); if (crossed(t0, this.t, i * 0.2 + 0.33)) { PD.Audio.ui('thud'); SM.shake = Math.max(SM.shake, 0.04 * PD.Settings.shake); } });
+      if (S.tick) S.tick(this, t0, this.t, dt);
       const delay = 0.35 + S.panels.length * 0.2;
       if (this.t > delay && this.shown < cap.length) {
         const before = Math.floor(this.shown);
         this.shown = Math.min(cap.length, this.shown + dt * CPS[PD.Settings.textSpeed | 0]);
         if (Math.floor(this.shown) !== before && (before % 2 === 0) && cap[before] !== ' ') PD.Audio.ui('type');
       }
+      // bubbles pop in
+      S.bubbles.forEach((b, i) => {
+        if (this.bt[i] !== undefined) return;
+        if (this.cap > b.at || (this.cap === b.at && this.shown > 2 && this.tc > (b.delay || 0))) {
+          this.bt[i] = this.t;
+          PD.Audio.ui(b.sfx || 'pop');
+          if (b.shake) SM.shake = b.shake * PD.Settings.shake;
+        }
+      });
       if (this.skip) { this.skip = false; return this.finish(); }
-      const go = UI.activate || (PD.INPUT.released && !UI.over(W - 52, 160, 48, 14));
+      const go = UI.activate || (PD.INPUT.released && !UI.over(W - 52, 164, 46, 12));
       if (!go) return;
       if (this.shown < cap.length) { this.shown = cap.length; return; }
       if (this.cap + 1 < S.caps.length) { this.cap++; this.shown = 0; this.tc = 0; PD.Audio.ui('nav'); return; }
-      if (this.shot + 1 < SHOTS.length) { this.shot++; this.cap = 0; this.shown = 0; this.t = 0; this.tc = 0; PD.Audio.ui('click'); return; }
+      if (this.shot + 1 < SHOTS.length) { this.shot++; this.startShot(); return; }
       this.finish();
     },
     finish() {
@@ -449,30 +708,33 @@
     draw(fb) {
       const S = SHOTS[this.shot], t = this.t || 0;
       pageBG(fb, SM.t);
-      const sh = { cap: this.cap, done: this.shown >= up(S.caps[this.cap]).length, tc: this.tc };
       S.panels.forEach((p, i) => {
         const k = easeOut((t - i * 0.2) / 0.35);
         if (k <= 0) return;
-        const off = Math.round((1 - k) * 24) * (i % 2 ? -1 : 1);
+        const off = Math.round((1 - k) * 28) * (i % 2 ? -1 : 1);
         const R = { x: p.r[0], y: p.r[1] + off, w: p.r[2], h: p.r[3] };
         panelFrame(fb, R);
         this.art.clear(C('ink', 0));
-        p.d(this.art, SM.t, R, sh);
+        p.d(this.art, t, R, this);
         fb.blit(this.art, R.x, R.y, R.w, R.h);
       });
-      if (t > 0.3) for (const b of S.bubbles) if (this.cap > b.at || (this.cap === b.at && this.shown > 2)) PD.bubble(fb, b.x, b.y, b.text, b.tx, b.ty, b);
-      // captions stack below the panels
+      S.bubbles.forEach((b, i) => {
+        if (this.bt[i] === undefined) return;
+        const k = (t - this.bt[i]) / 0.22;
+        const lines = String(b.text).split('\n');
+        const bw = Math.max(...lines.map((l) => PD.textWidth(up(l)))) + 8, bh = lines.length * 7 + 5;
+        popAt(fb, k, b.tx !== undefined ? b.tx : b.x + bw / 2, b.ty !== undefined ? b.ty : b.y + bh, (f) => PD.bubble(f, b.x, b.y, b.text, b.tx, b.ty, b));
+      });
       for (let i = 0; i <= this.cap; i++) {
         const str = up(S.caps[i]);
         const shown = i < this.cap ? str.length : Math.floor(this.shown);
-        if (i === this.cap && shown === 0 && t < 0.35 + S.panels.length * 0.2) continue;
+        if (i === this.cap && shown === 0) continue;
         const w = PD.textWidth(str) + 10;
-        const x = i % 2 ? W - 8 - w : 8;
-        caption(fb, x, 132 + i * 13, str, shown, i === this.cap && shown >= str.length, SM.t);
+        const x = i % 2 ? W - 8 - w : 8, y = 132 + i * 13;
+        const k = i < this.cap ? 1 : clamp(this.shown / 5, 0, 1);
+        popAt(fb, k, x + (i % 2 ? w : 0), y + 5, (f) => caption(f, x, y, str, shown, i === this.cap && shown >= str.length, SM.t));
       }
-      // progress dots + skip
       for (let i = 0; i < SHOTS.length; i++) fb.rect(8 + i * 6, 172, 4, 3, i <= this.shot ? C('neon', 2) : C('ink', 3));
-      // skip: mouse or Esc only, so Enter never skips by accident
       const hov = UI.over(W - 52, 164, 46, 12);
       if (hov) UI.cursor = 'hand';
       fb.rect(W - 52, 164, 46, 12, C('ink', 0)); fb.rect(W - 51, 165, 44, 10, C('ink', hov ? 3 : 2));
@@ -725,7 +987,7 @@
       const s = bigPhone(fb, 20, 4, 120, 172);
       fb.rect(s.x, s.y, s.w, s.h, C('ink', 1));
       appHeader(fb, s, 'INBOX');
-      PD.text(fb, '47 TAPS', s.x + s.w - 30, s.y + 3, C('ink', 0));
+      PD.text(fb, '47 TAPS', s.x + s.w - 30, s.y + 3, C('ui', 4));
       for (let i = 0; i < this.n; i++) {
         const [who, msg, dude] = PINGS[i];
         const k = easeOut((this.t - 0.4 - i * 0.45) / 0.25);
