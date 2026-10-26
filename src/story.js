@@ -900,5 +900,5 @@
     },
   };
 
-  PD.chapterScene = (sv) => (!sv ? 'menu' : ({ intro: 'intro', profile: 'profile', posted: 'posted', chat: 'phone' })[sv.chapter] || 'chapter');
+  PD.chapterScene = (sv) => (!sv ? 'menu' : ({ intro: 'intro', profile: 'profile', posted: 'posted', chat: 'phone', room: 'room' })[sv.chapter] || 'chapter');
 })(window.PD);

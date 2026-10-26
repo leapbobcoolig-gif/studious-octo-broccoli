@@ -318,11 +318,11 @@
     draw(fb) {
       PD.drawSkyline(fb, SM.t, 0.55);
       PD.panel(fb, 50, 30, 220, 110, 'neon', { fill: 0, inner: 'ink', innerShade: 1 });
-      PD.textS(fb, 'CHAPTER 3', W / 2, 42, 2, C('gold', 2), { center: true, outline: C('ink', 0) });
-      PD.textS(fb, 'THE ROOM', W / 2, 58, 2, C('neon', 3), { center: true, outline: C('ink', 0), wave: 1, t: this.t });
-      PD.textS(fb, 'TYLER IS ON HIS WAY. BLINDFOLDED.', W / 2, 80, 1, C('ui', 4), { center: true });
-      PD.textS(fb, 'THE ROOM, THE REVEAL AND THE CONVERSION', W / 2, 88, 1, C('ui', 4), { center: true });
-      PD.textS(fb, 'LAND IN MILESTONE 4.', W / 2, 96, 1, C('cyan', 3), { center: true });
+      PD.textS(fb, 'TO BE CONTINUED', W / 2, 42, 2, C('gold', 2), { center: true, outline: C('ink', 0) });
+      PD.textS(fb, '9,999 TO GO', W / 2, 58, 2, C('neon', 3), { center: true, outline: C('ink', 0), wave: 1, t: this.t });
+      PD.textS(fb, 'TYLER IS STRAIGHT. ONE DOWN.', W / 2, 80, 1, C('ui', 4), { center: true });
+      PD.textS(fb, 'NEXT: THE BUILDING. MORE ROOMS, MORE GIRLS,', W / 2, 88, 1, C('ui', 4), { center: true });
+      PD.textS(fb, 'MORE FAGS. (MILESTONE 5 + PHASE 2)', W / 2, 96, 1, C('cyan', 3), { center: true });
       if (UI.button(fb, 'sb', 70, 112, 84, 14, 'SANDBOX', { ramp: 'lime' })) SM.go('sandbox');
       if (UI.button(fb, 'bk', 166, 112, 84, 14, 'MAIN MENU', { ramp: 'neon' }) || UI.back) SM.go('menu');
     },

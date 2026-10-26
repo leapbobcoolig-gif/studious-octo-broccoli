@@ -91,7 +91,7 @@
       m.sp.belly.kick(-dir.x * s * 0.4, -dir.y * s * 0.4);
       const E = sk ? sk.entry : null;
       // sound words
-      if (E && this.speed > 0.55 && Math.random() < 0.75) {
+      if (E && this.speed > 0.55 && Math.random() < (this.quiet ? 0.35 : 0.75)) {
         const str = this.wetness > 0.6 && Math.random() < 0.3 ? 'SHLK' : PD.pick(SLAPS);
         this.fx.word(E.x + PD.pick([-1, 1]) * PD.rnd(14, 22), E.y - PD.rnd(6, 12), str, C('ui', 4), { vy: -10, life: 0.7 });
       }
@@ -99,11 +99,11 @@
         this.fx.word(68, 78, 'THUD', C('wood', 4), { vy: -6, life: 0.6 });
       // voices
       const wh = w.headPt, mh = m.headPt;
-      if (wh && Math.random() < 0.18 + w.arousal * 0.45) {
+      if (wh && !this.quiet && Math.random() < 0.18 + w.arousal * 0.45) {
         const tier = w.arousal < 0.35 ? 0 : w.arousal < 0.7 ? 1 : 2;
         this.fx.word(wh.x + PD.rnd(-4, 4), wh.y - 13, PD.pick(W_LINES[tier]), C('heart', 3));
       }
-      if (mh && Math.random() < 0.06 + m.arousal * 0.12) this.fx.word(mh.x, mh.y - 13, PD.pick(M_LINES), C('ui', 3));
+      if (mh && !this.quiet && Math.random() < 0.06 + m.arousal * 0.12) this.fx.word(mh.x, mh.y - 13, PD.pick(M_LINES), C('ui', 3));
       if (w.arousal > 0.55 && Math.random() < 0.3 && wh) this.fx.heart(wh.x + PD.rnd(-5, 5), wh.y - 8);
       for (const c of [w, m]) if (c.arousal > 0.3) c.face.mouthT = 0.2 + c.arousal * 0.35;
       this.wetness = Math.min(1, this.wetness + 0.01);

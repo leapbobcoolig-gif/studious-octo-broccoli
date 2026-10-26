@@ -103,6 +103,7 @@
       }
     }
     PD.drawBedFront(fb2, D.t, st);
+    if (opts && opts.skipFx) return;
     D.fx.draw(fb2);
     if (D.flash > 0) fb2.drect(0, 0, W, H, C('ui', 4), D.flash * 0.7);
   }

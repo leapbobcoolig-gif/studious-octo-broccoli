@@ -170,7 +170,7 @@ BOOT (18+) -> TITLE -> MAIN MENU -> (new game) INTRO COMIC -> PROFILE CREATOR ->
 | **M1** front end | ✅ | Scene manager + wipe, pixel UI kit, 18+ gate, title (SWIPE drop, STRAIGHT slam, rainbow→pink zap), menu, settings, saves |
 | **M2** intro + profile | ✅ | 6-shot animated comic; fake-profile creator with lit pics and "who bites"; inbox flood |
 | **M3** the phone | ✅ | App grid, Tyler's profile, branching chat (Trust/Sus, weakness, fumbles + tutorial rewind), trick picker, "on his way" |
-| **M4** the room | ⏳ next | See section 9 |
+| **M4** the room | ✅ | Blindfolded arrival, reveal freeze + big face cam, hook mash, 5-stage gay meter, live decor flips, position takeover, condom rip, squirt aim (facial), he cums in it, payout (STRAIGHT stamp, 10,000 → 9,999) |
 | **M5** tutorial glue + polish | ⏳ | Tutorial prompts through the room, payout, "to be continued" hub teaser, rating loop over the whole flow |
 
 **M2 details:**
