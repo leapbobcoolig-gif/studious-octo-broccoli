@@ -181,6 +181,36 @@ function buildRoom(){
 }
 
 // ---------------------------------------------------------- characters -----
+
+// corrective rig (shared): glutes ride the pelvis bones, perineum/groin ride the root, so deep
+// hip flexion stretches the ass round instead of collapsing it into the thigh crease
+function moveWeights(h, v, fromRe, toBone, amount){
+  let moved=0; for(let k=0;k<4;k++){ const b=h.names[h.widx[v*4+k]]; if(fromRe.test(b)){ const take=h.wval[v*4+k]*amount; h.wval[v*4+k]-=take; moved+=take; } }
+  if(moved<=0) return; let slot=-1; for(let k=0;k<4;k++) if(h.widx[v*4+k]===toBone) slot=k;
+  if(slot<0){ let mn=9; for(let k=0;k<4;k++) if(h.wval[v*4+k]<mn){ mn=h.wval[v*4+k]; slot=k; } moved+=h.wval[v*4+slot]; h.wval[v*4+slot]=0; h.widx[v*4+slot]=toBone; }
+  h.wval[v*4+slot]+=moved;
+}
+function correctiveHips(h, opt){
+  const cv=h.findVert(p=>Math.abs(p[0])<0.012 && p[1]>0.55 && p[1]<1.0, p=>p[1]), cy=h.rv(cv)[1], cz=h.rv(cv)[2];
+  const hz=h.restHead('upperleg01.L')[2], hx=h.restHead('upperleg01.L')[0];
+  const pl=h.b('pelvis.L'), pr=h.b('pelvis.R'), root=h.b('root');
+  h.buttMask=h.buttMask||new Float32Array(h.n);
+  for(let v=0;v<h.n;v++){ const p=h.rv(v);
+    // glutes
+    if(p[2]<hz-0.015){
+      const c=[Math.sign(p[0]||1)*opt.gx, cy+opt.gy, opt.gz];
+      const d=Math.hypot((p[0]-c[0])/0.9,(p[1]-c[1])/1.1,(p[2]-c[2])/1.0);
+      let m=1-smooth(0.05,opt.gr,d);
+      m*=smooth(-0.005,0.03,p[1]-cy); m*=1-smooth(hx-0.01,hx+0.05,Math.abs(p[0])); m*=smooth(0.0,0.05,hz-p[2]);
+      if(m>0){ h.buttMask[v]=Math.max(h.buttMask[v],m); moveWeights(h,v,/upperleg|spine05|spine04/,p[0]>=0?pl:pr,m*0.85); }
+    }
+    // perineum + groin crease
+    const dc=Math.hypot(p[0]/1.4, (p[1]-cy-0.012)/1.0, (p[2]-cz)/1.3);
+    const mc=1-smooth(0.03,opt.cr,dc);
+    if(mc>0) moveWeights(h,v,/upperleg|spine05|spine04/,root,mc);
+  }
+  return {cy};
+}
 function setupFemale(h){
   // stockings: thigh-high fishnet, lace band, solid feet
   const hipY=h.restHead('upperleg01.L')[1], kneeY=h.restHead('lowerleg01.L')[1];
@@ -249,6 +279,7 @@ function setupMale(h){
     if(!ear && (nape||sides||front) && y>top-0.2) m=12;
     h.mat[v]=m;
   }
+  correctiveHips(h,{gx:0.075,gy:0.085,gz:-0.075,gr:0.14,cr:0.075});
   const crotch=h.findVert(p=>Math.abs(p[0])<0.012 && p[1]>0.6 && p[1]<1.0, p=>p[1]);
   const cp=h.rv(crotch);
   h.anchor={
@@ -268,16 +299,10 @@ function deformFemale(h, jig){
     D[v*3]=N[v*3]*(full+cr) + Math.sign(h.rest[v*3])*0.003*m*jig; D[v*3+1]=N[v*3+1]*(full+cr) - j; D[v*3+2]=N[v*3+2]*(full+cr) + 0.5*j; }
 }
 function deformMale(h, clench){
-  const D=h.disp; D.fill(0);
-  for(const c of [h.anchor.gluteL,h.anchor.gluteR]){
-    for(let v=0;v<h.n;v++){ const p=h.rv(v); const d=len(sub(p,c)); if(d>0.14) continue;
-      const w=(1-smooth(0.03,0.14,d))*clench;
-      D[v*3]+= -Math.sign(p[0])*0.006*w; D[v*3+2]+= -0.004*w; }
-  }
-  const cy=h.rv(h.anchor.crotch)[1];
-  for(let v=0;v<h.n;v++){ const p=h.rv(v); if(p[2]>-0.03 || p[1]<cy+0.01 || p[1]>cy+0.22) continue;
-    const c=Math.exp(-((p[0]/0.014)**2))*smooth(cy+0.01,cy+0.05,p[1])*(1-smooth(cy+0.16,cy+0.22,p[1]));
-    D[v*3]-=h.restN[v*3]*0.010*c; D[v*3+1]-=h.restN[v*3+1]*0.010*c; D[v*3+2]-=h.restN[v*3+2]*0.010*c; }
+  const D=h.disp, N=h.restN, M=h.buttMask; D.fill(0);
+  for(let v=0;v<h.n;v++){ const m=M[v]; if(!m) continue;
+    const full=0.010*m*m - 0.004*m*clench;               // round glutes; clench hollows the sides
+    D[v*3]=N[v*3]*full - Math.sign(h.rest[v*3])*0.004*m*clench; D[v*3+1]=N[v*3+1]*full; D[v*3+2]=N[v*3+2]*full; }
   hairStyle(h, h.style||'swoop');
 }
 // sculpt hair out of the scalp: volume + chunky locks; 'swoop' pulls a fringe over one brow
@@ -384,7 +409,7 @@ function posePress(her, him, t, o={}){
   for(const [n,a,l] of msegs){
     mctl[n]=(head)=>{ const tt=(a+l*0.5)/macc;
       // slight arch: lower back dips, upper back rounds over her
-      const d=norm(add(T, mul(B, -0.18+0.36*tt)));
+      const d=norm(add(T, mul(B, -0.06+0.14*tt)));       // gentle arch, spread over the whole lumbar spine
       return frameRot(sub(him.restTail(n),him.restHead(n)),[0,0,1], d, mul(B,-1)); };
   }
   for(const n of ['neck01','neck02','neck03']) mctl[n]=()=>frameRot(sub(him.restTail(n),him.restHead(n)),[0,0,1], norm(add(T,mul(B,0.05))), mul(B,-1));
@@ -451,7 +476,8 @@ function buildGenitals(S, him){
   const sx=norm(cross(up,back));
   const sag=1+0.10*Math.max(0,-S.swing)*(0.4+S.out)+0.08*S.out;
   const cB=add(add(S.root, [0,-0.026*sag-0.012*S.out,0]), mul(back,0.060+0.006*S.swing));
-  const neckTo=add(add(S.root, mul(back,0.040)),[0,0.012,0]);             // where the sack joins the body
+  const neckTo=add(add(S.root, mul(back,0.040)),[0,0.012,0]);
+  S.ballC=cB; S.ballR=0.046*1.18;             // where the sack joins the body
   blob(M, cB, sx, up, back, (th,ph)=>{
     const lobes=1+0.30*Math.cos(2*th)*Math.sin(ph)**2;
     let r=0.046*lobes;

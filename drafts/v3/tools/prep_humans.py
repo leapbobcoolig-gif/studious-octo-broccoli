@@ -70,6 +70,7 @@ male = apply(verts, [
     (U % ('male', 'maxmuscle', 'averageweight'), 0.65),
     ('torso/torso-muscle-dorsi-incr.target', 0.6),
     ('buttocks/buttocks-volume-incr.target', 0.35),
+    ('pelvis/bulge-decr.target', 1.0),            # flat crotch: genitals are drawn separately
 ])
 
 # delta targets the runtime can blend per generated guy
