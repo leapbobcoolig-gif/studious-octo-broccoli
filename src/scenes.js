@@ -144,7 +144,9 @@
       if (Math.sin(t * 2 + i * 3 + j * 5) > 0.3) { fb.rect(tx + 9, ty + 1, 3, 3, C('ink', 0)); fb.px(tx + 10, ty + 2, C('lime', 3)); }
     }
     fb.rect(x + 3, y + 78, 44, 6, C('ink', 2));
-    PD.text(fb, online, x + 5, y + 79, C('gold', 3));
+    fb.rect(x + 5, y + 80, 3, 3, C('lime', 3));
+    PD.text(fb, online.split(' ')[0], x + 10, y + 79, C('gold', 3));
+    PD.text(fb, 'ON', x + 47 - 9, y + 79, C('lime', 3));
     fb.rect(x + 20, y + 3, 10, 1, C('ink', 3));
   }
 

@@ -130,6 +130,14 @@
       if (u * u + v * v <= 1) gset(i, j, c);
     }
   }
+  function gcap(ax, ay, bx, by, r, c) {
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1;
+    for (let j = Math.floor(Math.min(ay, by) - r); j <= Math.ceil(Math.max(ay, by) + r); j++)
+      for (let i = Math.floor(Math.min(ax, bx) - r); i <= Math.ceil(Math.max(ax, bx) + r); i++) {
+        const px = i + 0.5 - ax, py = j + 0.5 - ay, t = clamp((px * dx + py * dy) / L2, 0, 1);
+        if ((px - dx * t) ** 2 + (py - dy * t) ** 2 <= r * r) gset(i, j, c);
+      }
+  }
 
   PD.DUDE_DEFAULT = { skin: 'skin0', hair: 'hair1', hairStyle: 'short', shirt: 'cloth2', shirtStyle: 'tee', pants: 'cyan', face: 'blank' };
   PD.drawDude = function (fb, x, y, opt) {
@@ -142,9 +150,9 @@
     grect(11, 37, 4, 2, C('ink', 3)); grect(17, 37, 4, 2, C('ink', 3));
     // arms
     const sleeve = o.shirtStyle === 'tee' || o.shirtStyle === 'pride';
-    grect(8, 18, 3, 9, SK); grect(21, 18, 3, 9, SK);
-    if (sleeve) { grect(8, 18, 3, 3, SH); grect(21, 18, 3, 3, SH); }
-    gell(9.5, 27.5, 1.8, 1.6, SK); gell(22.5, 27.5, 1.8, 1.6, SK);
+    grect(8, 18, 3, 9, SK); if (!o.selfie) grect(21, 18, 3, 9, SK);
+    if (sleeve) { grect(8, 18, 3, 3, SH); if (!o.selfie) grect(21, 18, 3, 3, SH); }
+    gell(9.5, 27.5, 1.8, 1.6, SK); if (!o.selfie) gell(22.5, 27.5, 1.8, 1.6, SK);
     // torso
     grect(11, 17, 10, 12, SK);
     if (o.shirtStyle === 'tee' || o.shirtStyle === 'tank') grect(11, 17, 10, 12, SH);
@@ -181,7 +189,13 @@
       gell(24, 27.5, 1.8, 1.6, SK);
     }
     if (o.beer) { grect(4, 23, 4, 6, C('cloth1', 2)); grect(4, 23, 4, 1, C('ui', 3)); grect(5, 25, 2, 2, C('gold', 3)); }
-    if (o.phoneFace) { grect(11, 4, 9, 12, C('ink', 2)); grect(12, 5, 7, 10, C('ink', 3)); gset(13, 6, C('ui', 4)); }
+    if (o.selfie) { gcap(22.5, 18.5, 26.5, 14, 1.9, SK); gcap(26.5, 14, 21.5, 9.5, 1.7, SK); }
+    if (o.phoneFace) {
+      // phone held up over the face: we see its case + camera in the mirror
+      grect(11, 2, 10, 14, C('neon', 1)); grect(12, 3, 8, 12, C('neon', 2));
+      grect(12, 3, 4, 4, C('ink', 0)); gset(13, 4, C('ui', 3)); gset(14, 5, C('ui', 2));
+      if (o.selfie) { gell(21, 9.5, 2.2, 2.8, SK); grect(18, 11, 3, 1, SK); grect(18, 13, 3, 1, SK); }
+    }
     if (o.bag) { grect(21, 20, 7, 8, C('neon', 2)); grect(22, 18, 1, 2, C('neon', 1)); grect(26, 18, 1, 2, C('neon', 1)); }
 
     const out = shadeGrid(grid, GW, GH);
@@ -357,46 +371,6 @@
   // in-game style FX word (same look as the sex scene's PLAPs)
   const fxText = (fb, str, x, y, col) => PD.text(fb, str, Math.round(x - PD.textWidth(str) / 2), y, col || C('ui', 4), C('ui', 0), 1, C('heart', 2));
 
-  // A hand holding the phone: fingers wrap the left edge, thumb over the screen.
-  function phoneHand(fb, px, py, t) {
-    const S3 = C('skin0', 3), B = new Blob(96, 136);
-    const ox = px - 14, oy = py - 4;                 // blob origin; phone (52x92) at px,py
-    const L = 14, Rr = L + 52, Bt = 4 + 92;          // phone left/right/bottom in blob coords
-    const bob = Math.sin(t * 3) * 0.8;
-    // fingers wrap around the left edge from behind: just the tips curl onto the front
-    for (let k = 0; k < 4; k++) { const y = 46 + k * 9; B.cap(L - 5, y, L + 2, y + 1, 3.6, 3.2, S3); }
-    // heel of the hand + wrist under the bottom-right corner
-    B.ell(Rr - 6, Bt + 3, 15, 11, S3);
-    B.cap(Rr - 4, Bt + 6, Rr + 8, Bt + 34, 12, 13, S3);
-    // thumb across the screen
-    B.cap(Rr - 2, Bt - 2, Rr - 18, Bt - 26 + bob, 6.6, 4.8, S3);
-    B.draw(fb, ox, oy, 1, (F) => {
-      const D = C('skin0', 2), N = C('skin0', 4), P = C('heart', 4);
-      for (let k = 0; k < 4; k++) { const y = 46 + k * 9; F(L - 6, y - 2, N); F(L - 5, y - 3, N); F(L - 4, y - 3, N); F(L - 1, y + 3, D); F(L, y + 3, D); F(L + 1, y + 3, D); }
-      const tx = Rr - 18, ty = Bt - 26 + bob;
-      for (let j = -3; j <= 2; j++) for (let i = -3; i <= 3; i++) {
-        const u = (i * 0.85 + j * 0.53) / 3.4, v = (-i * 0.53 + j * 0.85) / 2.6;
-        if (u * u + v * v <= 1) F(tx + i + 1, ty + j + 1, v < -0.35 ? N : P);
-      }
-      for (let k = 0; k < 4; k++) F(Rr - 9 + k, Bt - 12 + bob + k, D);   // thumb knuckle crease
-      for (let k = 0; k < 6; k++) F(Rr - 14 + k * 2, Bt + 8 + (k > 2 ? 1 : 0), D); // palm line
-    });
-  }
-  // Big thumb for the CREATE PROFILE press (tip at tx,ty, comes in from bottom-right)
-  function bigThumb(fb, tx, ty) {
-    const S3 = C('skin0', 3), B = new Blob(40, 50);
-    B.cap(34, 50, 9, 8, 10, 7.5, S3);
-    B.ell(30, 44, 11, 9, S3);
-    B.draw(fb, tx - 18, ty - 10, 2, (F) => {
-      const N = C('skin0', 4), P = C('heart', 4), D = C('skin0', 2);
-      for (let j = -4; j <= 4; j++) for (let i = -4; i <= 4; i++) {
-        const u = (i * 0.8 + j * 0.6) / 4.6, v = (-i * 0.6 + j * 0.8) / 3.6;
-        if (u * u + v * v <= 1) F(9 + i, 6 + j, v < -0.3 ? N : P);
-      }
-      for (let k = 0; k < 4; k++) F(15 + k, 22 - k, D);
-      for (let k = 0; k < 3; k++) F(16 + k, 25 - k, D);
-    });
-  }
   function sparkle(fb, x, y, r, c) {
     fb.px(x, y, C('ui', 4));
     for (let k = 1; k <= r; k++) { fb.px(x + k, y, c); fb.px(x - k, y, c); fb.px(x, y + k, c); fb.px(x, y - k, c); }
@@ -426,8 +400,9 @@
           for (let k = 0; k < 6; k++) fb.ellipse(R.x + R.w / 2, R.y + 56, 50 - k * 7, 50 - k * 7, C('gold', 1), 0.06 * k);
           const buzz = t > 0.6 && ((t - 0.6) % 1.4) < 0.3;
           const px = R.x + 31, py = R.y + 10;
+          PD.drawPhoneHandBack(fb, px, py);
           PD.drawPhone(fb, px, py, t, buzz, '10,000 ONLINE');
-          phoneHand(fb, px, py, t);
+          PD.drawPhoneHandFront(fb, px, py, t);
           if (buzz) {
             for (let k = 0; k < 3; k++) { fb.px(px - 4 - k, py + 20 + k * 3, C('gold', 3)); fb.px(px + 56 + k, py + 20 + k * 3, C('gold', 3)); }
             popAt(fb, ((t - 0.6) % 1.4) / 0.12, px + 26, py - 3, (f) => fxText(f, 'BZZT', px + 26, py - 5, C('gold', 4)));
@@ -452,57 +427,12 @@
     },
     { // 3. the operator
       panels: [
-        { r: [8, 8, 196, 118], d(fb, t, R) {
-          const X = R.x, Y = R.y;
-          fb.rect(X, Y, R.w, R.h, C('wall', 0));
-          fb.drect(X, Y, R.w, R.h, C('wall', 1), 0.5);
-          fb.rect(X + 8, Y + 10, 58, 44, C('ink', 0)); fb.rect(X + 9, Y + 11, 56, 42, C('wood', 2));
-          const pins = [[16, 16], [40, 14], [54, 26], [20, 36], [42, 40]];
-          pins.forEach(([px, py], i) => {
-            fb.rect(X + px - 4, Y + py - 3, 10, 9, C('ui', 4)); fb.rect(X + px - 3, Y + py - 2, 8, 6, C('night', 3));
-            PD.drawDude(fb, X + px + 1, Y + py + 30, Object.assign({ s: 1, clip: [X + px - 3, Y + py - 2, 8, 6] }, Object.values(CAST)[i + 2]));
-            fb.line(X + px - 2, Y + py - 1, X + px + 4, Y + py + 3, C('cloth1', 3)); fb.line(X + px - 2, Y + py + 3, X + px + 4, Y + py - 1, C('cloth1', 3));
-            fb.px(X + px + 1, Y + py - 4, C('cloth1', 4));
-          });
-          for (let i = 0; i < pins.length - 1; i++) fb.line(X + pins[i][0] + 1, Y + pins[i][1] - 4, X + pins[i + 1][0] + 1, Y + pins[i + 1][1] - 4, C('cloth1', 2));
-          for (let m = 0; m < 3; m++) {
-            const mx = X + 82 + m * 36, my = Y + 14 + (m === 1 ? -4 : 0);
-            fb.rect(mx, my, 32, 24, C('ink', 0)); fb.rect(mx + 2, my + 2, 28, 20, C('ink', 1));
-            fb.rect(mx + 2, my + 2, 28, 3, C('ink', 0)); PD.drawMask(fb, mx + 6, my + 2, 9, 8);
-            for (let k = 0; k < 6; k++) fb.rect(mx + 3 + (k % 3) * 9, my + 7 + Math.floor(k / 3) * 7, 8, 6, C('night', 4 - ((k + m + Math.floor(t * 2)) % 2)));
-            const sl = (t * 14 + m * 9) % 26;
-            fb.drect(mx + 2, my + 2 + sl, 28, 2, C('ui', 4), 0.2);
-          }
-          fb.rect(X, Y + 88, R.w, 30, C('wood', 1)); fb.rect(X, Y + 88, R.w, 2, C('wood', 3));
-          fb.ellipse(X + 100, Y + 66, 46, 30, C('gold', 1), 0.18 + Math.sin(t * 3) * 0.04);
-          const ox = X + 100, oy = Y + 70 + Math.round(Math.sin(t * 1.6) * 0.6);
-          fb.ellipse(ox, oy + 24, 37, 14, C('ink', 0)); fb.rect(ox - 37, oy + 24, 74, 60, C('ink', 0));
-          fb.ellipse(ox, oy + 24, 36, 13, C('ink', 2)); fb.rect(ox - 36, oy + 24, 72, 60, C('ink', 2));
-          fb.ellipse(ox - 14, oy + 22, 14, 7, C('ink', 3), 0.45);
-          fb.ellipse(ox, oy - 1, 16, 19, C('ink', 0)); fb.ellipse(ox, oy - 1, 15, 18, C('ink', 2));
-          fb.ellipse(ox - 4, oy - 6, 8, 10, C('ink', 3), 0.5);
-          fb.line(ox, oy - 18, ox, oy + 16, C('ink', 1));
-          fb.rect(ox - 22, oy + 30, 1, 30, C('ink', 1)); fb.rect(ox + 22, oy + 30, 1, 30, C('ink', 1));
-          for (let a = -2.6; a < -0.5; a += 0.03) fb.px(ox + Math.cos(a) * 16, oy - 2 + Math.sin(a) * 18, C('cyan', 2));
-          [[22, 80], [30, 82], [160, 80]].forEach(([cx, cy]) => { fb.rect(X + cx, Y + cy, 6, 9, C('ink', 0)); fb.rect(X + cx + 1, Y + cy + 1, 4, 7, C('lime', 2)); fb.rect(X + cx + 1, Y + cy + 1, 1, 7, C('lime', 4)); });
-        } },
+        { r: [8, 8, 196, 118], d(fb, t, R) { PD.drawOperatorRoom(fb, R.x, R.y, R.w, R.h, t); } },
         { r: [210, 8, 102, 118], d(fb, t, R) {
           const X = R.x, Y = R.y;
           radial(fb, R, X + 50, Y + 60, C('neon', 1), C('neon', 5), t);
-          const item = (k, x, y, w, h, ramp, label, lc) => {
-            const a = clamp((t - 0.7 - k * 0.22) / 0.25, 0, 1);
-            if (a <= 0) return;
-            const yo = Math.round(-(1 - a) * (1 - a) * 70), sq = a >= 1 && t - 0.95 - k * 0.22 < 0.08 ? 1 : 0;
-            y += yo + sq; h -= sq;
-            fb.rect(x - 1, y - 1, w + 2, h + 2, C('ink', 0)); fb.rect(x, y, w, h, C(ramp, 2)); fb.rect(x, y, 2, h, C(ramp, 3)); fb.rect(x + w - 2, y, 2, h, C(ramp, 1));
-            PD.text(fb, label, x + (w - PD.textWidth(label)) / 2, y + (h >> 1) - 2, lc || C('ink', 0));
-          };
-          item(0, X + 10, Y + 20, 22, 44, 'cyan', 'LUBE');
-          item(1, X + 38, Y + 30, 26, 34, 'ui', 'VODKA');
-          item(2, X + 68, Y + 46, 26, 18, 'neon', 'XXL');
-          const a = clamp((t - 1.36) / 0.2, 0, 1);
-          if (a > 0) { const yo = Math.round(-(1 - a) * 40); fb.rect(X + 12, Y + 74 + yo, 78, 8, C('ink', 0)); fb.rect(X + 13, Y + 75 + yo, 76, 6, C('ink', 3)); PD.text(fb, 'BLINDFOLD', X + 34, Y + 76 + yo, C('ui', 4)); }
-          popAt(fb, (t - 1.7) / 0.25, X + R.w / 2, Y + 99, (f) => PD.textS(f, 'THE KIT', X + R.w / 2, Y + 94, 2, C('gold', 3), { center: true, outline: C('ink', 0) }));
+          PD.drawKit(fb, X, Y, t, (k) => (t - 0.7 - k * 0.22) / 0.25);
+          popAt(fb, (t - 1.7) / 0.25, X + R.w / 2, Y + 105, (f) => PD.textS(f, 'THE KIT', X + R.w / 2, Y + 100, 2, C('gold', 3), { center: true, outline: C('ink', 0) }));
         } },
       ],
       tick(sc, t0, t1) {
@@ -631,13 +561,13 @@
         const s = bigPhone(fb, X + 50, Y + 6, 80, 128);
         fb.rect(s.x, s.y, s.w, s.h, C('ink', 0));
         appHeader(fb, s);
-        fb.rect(s.x + s.w / 2 - 14, s.y + 22, 28, 30, C('ink', 2));
-        PD.drawDude(fb, s.x + s.w / 2, s.y + 64, { s: 1, face: 'none', skin: 'ink', hair: 'ink', shirt: 'ink', pants: 'ink', hairStyle: 'none', clip: [s.x + s.w / 2 - 14, s.y + 22, 28, 30] });
-        PD.textS(fb, 'NO PROFILE', s.x + s.w / 2, s.y + 60, 1, C('ink', 4), { center: true });
+        fb.rect(s.x + s.w / 2 - 12, s.y + 16, 24, 24, C('ink', 2));
+        PD.drawDude(fb, s.x + s.w / 2, s.y + 56, { s: 1, face: 'none', skin: 'ink', hair: 'ink', shirt: 'ink', pants: 'ink', hairStyle: 'none', clip: [s.x + s.w / 2 - 12, s.y + 16, 24, 24] });
+        PD.textS(fb, 'NO PROFILE', s.x + s.w / 2, s.y + 44, 1, C('ink', 4), { center: true });
         const tc = sc.cap >= 1 ? sc.tc : -1;
         const pressed = tc > 0.75 && tc < 1.05;
-        const bx = s.x + 5, by = s.y + 78 + (pressed ? 1 : 0);
-        fb.rect(bx, s.y + 78, s.w - 10, 15, C('ink', 0));
+        const bx = s.x + 5, by = s.y + 56 + (pressed ? 1 : 0);
+        fb.rect(bx, s.y + 56, s.w - 10, 15, C('ink', 0));
         fb.rect(bx + 1, by + 1, s.w - 12, 12, C('gold', pressed ? 3 : 2)); fb.rect(bx + 1, by + 1, s.w - 12, 1, C('gold', 4));
         PD.text(fb, 'CREATE PROFILE', bx + 5, by + 5, C('ink', 0));
         if (tc > 0.75) for (let r = 0; r < 2; r++) {
@@ -650,7 +580,7 @@
         if (tc > 0.75) popAt(fb, (tc - 0.75) / 0.15, bx + 66, by - 8, (f) => fxText(f, 'TAP', bx + 66, by - 10, C('ui', 4)));
         if (tc >= 0) {
           const k = easeOut(tc / 0.7), push = pressed ? 2 : 0;
-          bigThumb(fb, bx + 70 + (1 - k) * 60, by + 6 + (1 - k) * 70 + push);
+          PD.drawBigThumb(fb, bx + 58 + (1 - k) * 60, by + 15 + (1 - k) * 80 + push);
         }
       } }],
       tick(sc, t0, t1) { if (sc.cap >= 1 && sc.tc - (t1 - t0) < 0.75 && sc.tc >= 0.75) { PD.Audio.ui('click'); SM.shake = 0.05 * PD.Settings.shake; } },
@@ -801,60 +731,7 @@
     drawPicRaw(fb, x, y, w, h, kind, t);
     dst.blit(fb, x, y, w, h);
   }
-  function drawPicRaw(fb, x, y, w, h, kind, t) {
-    if (kind === 0) { // gym torso, no head: V-taper, pecs, six pack
-      fb.rect(x, y, w, h, C('cyan', 1));
-      for (let i = 0; i < 4; i++) fb.rect(x + 4 + i * 6, y + 6, 2, h - 12, C('ink', 2));
-      fb.rect(x + w - 16, y + 10, 12, 3, C('ink', 2)); fb.rect(x + w - 18, y + 8, 3, 7, C('ink', 3)); fb.rect(x + w - 5, y + 8, 3, 7, C('ink', 3));
-      const cx = x + w / 2, top = y + 6;
-      const SK = (k) => C('skin1', k);
-      // neck + traps
-      fb.rect(cx - 6, y - 1, 12, 9, C('ink', 0)); fb.rect(cx - 5, y - 1, 10, 9, SK(2));
-      for (let j = 0; j < h - 6; j++) {
-        const f = j / (h - 6);
-        const sh = f < 0.12 ? 18 + f / 0.12 * 12 : 30 - (f - 0.12) * 16; // half-width: traps -> shoulders -> waist
-        const xl = Math.round(cx - sh), xr = Math.round(cx + sh);
-        fb.rect(xl - 1, top + j, xr - xl + 2, 1, C('ink', 0));
-        fb.rect(xl, top + j, xr - xl, 1, SK(3));
-        fb.rect(xr - 4, top + j, 4, 1, SK(2));   // shadow side
-        fb.rect(xl, top + j, 2, 1, SK(4));       // rim light
-      }
-      // pecs
-      [-1, 1].forEach((d) => {
-        fb.ellipse(cx + d * 9, top + 14, 10, 6, SK(3));
-        fb.ellipse(cx + d * 9 - 2, top + 12, 6, 3, SK(4));
-        for (let i = -9; i <= 9; i++) fb.px(cx + d * 9 + i, top + 19 + Math.round(Math.abs(i) * -0.25), SK(1));
-        fb.px(cx + d * 10, top + 15, C('skin1', 5));
-      });
-      fb.rect(cx, top + 8, 1, h - 10, SK(1));
-      // six pack
-      for (let j = 0; j < 3; j++) [-1, 1].forEach((d) => {
-        const ax = d < 0 ? cx - 7 : cx + 2, ay = top + 23 + j * 7;
-        fb.rect(ax, ay, 5, 5, SK(3)); fb.rect(ax, ay, 5, 1, SK(4)); fb.rect(ax, ay + 5, 5, 1, SK(1));
-      });
-      // obliques + happy trail
-      fb.line(cx - 15, top + 24, cx - 10, top + 46, SK(1)); fb.line(cx + 15, top + 24, cx + 10, top + 46, SK(1));
-      fb.rect(cx, top + 44, 1, 6, C('hair1', 2));
-      fb.rect(x, y + h - 4, w, 4, C('cloth0', 2)); fb.rect(x, y + h - 4, w, 1, C('cloth0', 4));
-    } else if (kind === 1) { // mirror selfie
-      fb.rect(x, y, w, h, C('wall', 3));
-      fb.rect(x + 4, y + 3, w - 8, h - 3, C('ui', 3)); fb.rect(x + 5, y + 4, w - 10, h - 4, C('sky', 3));
-      PD.drawDude(fb, x + w / 2, y + h + 30, { s: 2, skin: 'skin1', hair: 'hair0', shirtStyle: 'tank', shirt: 'cloth0', phoneFace: true, clip: [x + 5, y + 4, w - 10, h - 4] });
-      if (Math.sin(t * 6) > 0.6) fb.rect(x + w / 2 - 6, y + 12, 3, 3, C('ui', 4));
-    } else if (kind === 2) { // bulge
-      fb.rect(x, y, w, h, C('wall', 2));
-      fb.rect(x + 6, y, w - 12, h, C('ink', 0)); fb.rect(x + 7, y, w - 14, h, C('cloth2', 1));
-      fb.rect(x + 7, y, w - 14, 6, C('cloth0', 2)); PD.text(fb, 'CK', x + w / 2 - 3, y + 1, C('ui', 4));
-      fb.ellipse(x + w / 2 + 3, y + h * 0.55, 8, 13, C('cloth2', 2)); fb.ellipse(x + w / 2 + 1, y + h * 0.5, 4, 8, C('cloth2', 3));
-      fb.line(x + w / 2 - 8, y + 10, x + w / 2 - 4, y + h - 2, C('cloth2', 0));
-      PD.text(fb, '(SOCK)', x + 2, y + h - 7, C('ink', 3));
-    } else { // sunset
-      for (let j = 0; j < h; j++) fb.rect(x, y + j, w, 1, j < h * 0.25 ? C('neon', 1) : j < h * 0.45 ? C('neon', 2) : j < h * 0.6 ? C('gold', 2) : C('cyan', 1 + (j % 3 === 0 ? 1 : 0)));
-      fb.ellipse(x + w / 2, y + h * 0.6, 12, 12, C('gold', 4));
-      fb.rect(x, y + h * 0.6, w, h * 0.4, C('cyan', 1));
-      for (let j = 0; j < 5; j++) fb.rect(x + w / 2 - 10 + j * 2, y + h * 0.64 + j * 3, 20 - j * 4, 1, C('gold', 3));
-    }
-  }
+  function drawPicRaw(fb, x, y, w, h, kind, t) { PD.PICS[kind](fb, x, y, w, h, t); }
   PD.drawProfilePic = drawPic;
 
   SM.scenes.profile = {
