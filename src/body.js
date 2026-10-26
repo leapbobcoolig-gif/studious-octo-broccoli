@@ -344,28 +344,20 @@
       const pp = [];
       let tipDir = norm(curl);
       if (free) {
-        // glans: wider than the shaft at the corona, rounded tip, flesh-pink
-        const gc = ma(end, tipDir, -1.6 * g / 1.95);
-        pr.push(ell(gc, 2.5 * g / 1.95, g * 1.18, ang(tipDir)));
-        pr.push(ell(ma(gc, tipDir, -1.3 * g / 1.95), 0.9, g * 1.24, ang(tipDir)));
-        pp.push({ prims: [ell(gc, 3.2 * g / 1.95, g * 1.5, ang(tipDir))], ramp: skinRamp(c), map: FLESH,
-          clips: [{ pt: ma(gc, tipDir, -1.6 * g / 1.95), n: tipDir }] });
+        // glans: barely wider than the shaft, rounded, pink only on the head
+        const gc = ma(end, tipDir, -1.1 * g / 1.95);
+        pr.push(ell(gc, 1.7 * g / 1.95, g * 1.0, ang(tipDir)));
+        pp.push({ prims: [ell(ma(gc, tipDir, 0.3), 2.0 * g / 1.95, g * 1.3, ang(tipDir))], ramp: skinRamp(c), map: FLESH,
+          clips: [{ pt: ma(gc, tipDir, -0.9 * g / 1.95), n: tipDir }] });
       }
       G.penis = {
         prims: pr, ramp: skinRamp(c), k: 1.0, paints: pp,
         softRoots: [{ pt: pn.B, r: g * 2.4 }],
         decal: (fb) => {
           const sk2 = skinRamp(c) * 6;
-          // dorsal vein running along the top of the shaft
-          for (let t = 0.2; t < Math.min(vis / pn.L, 0.7); t += 0.09) {
-            const q = ma(ma(pn.B, dirv, pn.L * t), sideV, g * (0.55 + 0.15 * Math.sin(t * 20)));
-            fb.px(q.x, q.y, sk2 + 1);
-          }
           if (free) {
-            const tip = ma(end, tipDir, 0.6);
+            const tip = ma(end, tipDir, 0.4);
             fb.px(tip.x, tip.y, sk2 + 1); // meatus
-            const cr = ma(ma(end, tipDir, -2.9 * g / 1.95), sideV, -g * 0.9);
-            fb.px(cr.x, cr.y, sk2 + 0); // corona shadow under the rim
           }
           if (st && st.wet > 0.2) for (let t = 0.15; t < vis / pn.L; t += 0.18) {
             const q = ma(ma(pn.B, dirv, pn.L * t), sideV, g * 0.75);

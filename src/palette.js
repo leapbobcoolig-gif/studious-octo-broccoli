@@ -33,7 +33,7 @@
   ];
 
   const MONO_OVERRIDE = {
-    skin: ['#141414', '#9c9c9c', '#cfcfcf', '#ebebeb', '#ffffff', '#7c7c7c'],
+    skin: ['#141414', '#9c9c9c', '#cfcfcf', '#ebebeb', '#ffffff', '#b4b4b4'],
     fluid: ['#3a3528', '#d9cfae', '#efe6c8', '#f8f2de', '#fffbee', '#bdb28e'],
     heart: ['#141414', '#bdbdbd', '#e0e0e0', '#f2f2f2', '#ffffff', '#8a8a8a'],
     sheet: ['#141414', '#8a8a8a', '#b4b4b4', '#d2d2d2', '#ececec', '#6a6a6a'],
