@@ -328,7 +328,9 @@ function drawFrame(r, c, f) {
   A.each((x, y, k) => { if (B.get(x, y) !== "." && "ABCDEOWXYZ".includes(B.get(x, y))) return; const i = y * 320 + x; F.set(x, y, k, [A.n[i * 3], A.n[i * 3 + 1], A.n[i * 3 + 2]], A.fl[i]) })
   asshole(F)
   const drag = Math.round(r.out * 6)
-  pussy(F, drag, true)
+  // her lips sit under him: only where his body isn't
+  { const PL = new Layer(); pussy(PL, drag, true)
+    PL.each((x, y, k) => { if ("ABCDEOWXYZ".includes(B.get(x, y))) return; const i = y * 320 + x; F.set(x, y, k, [PL.n[i * 3], PL.n[i * 3 + 1], PL.n[i * 3 + 2]], PL.fl[i]) }) }
   const ballTop = r.by - (r.mode === "slap" ? 11 : 15)
   shaft(F, ballTop, 96 + Math.round(drag / 2) - 1)
   const ry = 2 + Math.round(drag / 2)
@@ -358,7 +360,7 @@ function hisDetails(F, B, sackTop, clench) {
     for (let y = Math.floor(gy - ry - 2); y <= gy + ry + 2; y++) for (let x = Math.floor(cx - rx - 2); x <= cx + rx + 2; x++) {
       const u = (x + 0.5 - cx) / rx, v = (y + 0.5 - gy) / ry
       // he's on top: the bottom of each glute hangs over her ass, not under it
-      const overHer = v > 0.2 && "abcdeo".includes(F.get(x, y))
+      const overHer = v > 0.2 && "abcdeofghijkmpx".includes(F.get(x, y))
       if ((s < 0 ? x > 160 : x < 160) || !(isHim(B.get(x, y)) || overHer)) continue
       const inner = (u * s) < 0, p = v > 0 && inner ? 3.4 : v > 0 ? 2.9 : 2.4
       const m = se(u, v, p); if (m > 1) continue
@@ -381,7 +383,7 @@ function hisDetails(F, B, sackTop, clench) {
     }
   }
   // outline where his glutes hang over her
-  for (const [x, y] of OV) for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0]]) { const k = F.get(x + dx, y + dy); if ("abcdeo".includes(k) && k !== ".") F.set(x + dx, y + dy, "O", [0, 0, 1], 1) }
+  for (const [x, y] of OV) for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0]]) { const k = F.get(x + dx, y + dy); if ("abcdeofghijkmpx".includes(k) && k !== ".") F.set(x + dx, y + dy, "O", [0, 0, 1], 1) }
   // the fold where each glute sits on the back of the thigh: soft shadow, darkest inside
   for (const s of [-1, 1]) for (let x = 2; x <= 21; x++) {
     const u = x / (24 - clench), y = Math.round(gy + 22 * Math.pow(Math.max(0, 1 - Math.pow(u, 3.4)), 1 / 3.4))
