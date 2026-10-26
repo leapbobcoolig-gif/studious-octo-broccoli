@@ -32,9 +32,9 @@
   if (q.get('gate') === '0') document.getElementById('gate').remove();
 
   function resize() {
-    const aw = Math.max(100, innerWidth - 32), ah = Math.max(60, innerHeight - 8);
-    const s = Math.max(1, Math.floor(Math.min(aw / W, ah / H)));
-    const sc = aw < W || ah < H ? Math.min(aw / W, ah / H) : s;
+    const aw = Math.max(100, innerWidth - 16), ah = Math.max(60, innerHeight - 4);
+    // fill the frame: fractional scale, pixels stay crisp via image-rendering: pixelated
+    const sc = Math.min(aw / W, ah / H);
     stage.style.width = W * sc + 'px';
     stage.style.height = H * sc + 'px';
     stage.style.setProperty('--u', sc + 'px');
@@ -90,9 +90,9 @@
         const [who, part] = name.split('.');
         const g = G[who][part];
         if (!g) continue;
-        if (!g.prims.length) { if (g.decal) g.decal(fb); continue; }
         g.clipY = PD.BED_Y + D.bedOff + 2.5; // flesh sinks into the mattress
-        PD.drawGroup(fb, g);
+        if (!g.prims.length) { if (g.decal) g.decal(fb); } else PD.drawGroup(fb, g);
+        if (part === 'hairFront' && G[who].ear) { G[who].ear.clipY = g.clipY; PD.drawGroup(fb, G[who].ear); }
       }
     }
     PD.drawBedFront(fb, D.t, st);

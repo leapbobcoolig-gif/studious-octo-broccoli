@@ -107,8 +107,6 @@
       const at = (pt, a, b, col) => fb.px(pt.x + up.x * a + fw.x * b, pt.y + up.y * a + fw.y * b, col);
       const stamp = (pt, list, col) => { if (list) for (const [a, b] of list) at(pt, a, b, col); };
       // ear
-      const ear = H(0.0, -0.8);
-      stamp(ear, [[1, 0], [0, -1], [-1, 0]], sk + 1);
       // brows
       const E = H(0.6, 3.7);
       stamp(E, f ? [[3, -2], [3, -1], [3, 0]] : [[3, -2], [3, -1], [3, 0], [2, 1], [3, 1]], f ? hrm + 1 : hrm);
@@ -119,7 +117,7 @@
       stamp(E, set.d, dark);
       stamp(E, set.h, C('heart', 2));
       // mouth
-      const M = H(-3.2, 4.4);
+      const M = H(-3.15, 4.9);
       const mo = MOUTH[Math.max(0, Math.min(2, fc.mouth | 0))];
       stamp(M, mo.d, fc.mouth ? dark : sk + 1);
       if (f) stamp(M, mo.l, sk + 5);
@@ -147,7 +145,7 @@
       const style = p.hairStyle;
       if (style === 'long' || style === 'pony' || style === 'bob') {
         back.push(ell(H(0.3, -2.3), (style === 'bob' ? 7.2 : 6.4) * hr, (style === 'bob' ? 5.6 : 4.8) * hr, aH));
-        const cfg = style === 'long' ? { root: H(1.4, -4.6), n: 6, seg: 5.2 * D.s, r0: 4.4, r1: 1.3 }
+        const cfg = style === 'long' ? { root: H(0.2, -5.0), n: 6, seg: 5.2 * D.s, r0: 4.2, r1: 1.3 }
           : style === 'pony' ? { root: H(4.0, -5.4), n: 4, seg: 4.4 * D.s, r0: 2.6, r1: 1.0 }
             : { root: H(-1.0, -3.8), n: 2, seg: 3.2 * D.s, r0: 4.2, r1: 3.0 };
         const cols = [
@@ -155,7 +153,7 @@
           { a: T.shoulder, b: T.C, r: 4.2 * D.s },
           { a: T.Wp, b: T.P, r: 6.2 * D.s * p.hips },
         ];
-        const pts = c.hair.step(cfg.root, cfg.n, cfg.seg, dt, T.Hc, D.headR * 0.95, mul(T.uh, -1), cols);
+        const pts = c.hair.step(cfg.root, cfg.n, cfg.seg, dt, T.Hc, D.headR * 1.05, mul(T.uh, -1), cols, { pt: ma(T.Hc, T.fh, -1.5 * hr), n: T.fh });
         for (let i = 0; i < cfg.n; i++) {
           const t0 = i / cfg.n, t1 = (i + 1) / cfg.n;
           back.push(cap(pts[i], pts[i + 1], PD.lerp(cfg.r0, cfg.r1, t0) * hr, PD.lerp(cfg.r0, cfg.r1, t1) * hr));
@@ -164,7 +162,6 @@
       }
       front.push(ell(H(4.2, -0.6), 3.7 * hr, 6.7 * hr, aH));
       front.push(ell(H(4.1, 4.0), 1.7 * hr, 1.8 * hr, aH));
-      if (style !== 'pony') front.push(cap(H(1.5, 0.2), H(-4.2, 1.0), 1.7 * hr, 1.0 * hr));
     } else {
       const style = p.hairStyle;
       if (style !== 'bald') {
@@ -213,9 +210,6 @@
         ell(T.C, 7.4 * s, 6.0 * s, aC),
         ell(T.shoulder, 3.6 * s, 3.4 * s, aC),
         cap(T.neckBase, LH(-3.4, -0.8), 2.4 * s, 2.2 * s),
-        ell(T.Hc, D.headR * 1.04, D.headR * 0.92, aH),
-        ell(LH(-3.3, 2.0), 3.0 * hr, 3.4 * hr, aH),
-        ell(LH(-0.6, 6.0), 1.2 * hr, 0.9 * hr, aH),
       );
       if (p.choker) {
         const nk = vlerp(T.neckBase, LH(-3.4, -0.8), 0.45);
@@ -237,12 +231,8 @@
         ell(LC(1.6 * s, (4.4 + mu * 0.8) * s), (3.4 + mu * 1.2) * s, (2.6 + mu * 0.9) * s, aC),
         ell(T.shoulder, (4.2 + mu * 1.2) * s, (4.0 + mu) * s, aC),
         cap(T.neckBase, LH(-3.4, -0.6), 3.2 * s, 3.0 * s),
-        ell(T.Hc, D.headR * 1.04, D.headR * 0.94, aH),
-        ell(LH(-3.5, 2.2), 3.5 * hr, 3.9 * hr, aH),
-        ell(LH(-0.5, 6.4), 1.5 * hr, 1.0 * hr, aH),
       );
       paints.push({ prims: [ell(L(-4 * s, 4.6 * s), 2.8 * s, 3.2 * s, aU)], ramp: hairRamp(c), pat: PD.PAT.hair });
-      if (p.beard) paints.push({ prims: [ell(LH(-3.4, 1.6), 3.4 * hr, 4.8 * hr, aH)], ramp: hairRamp(c), pat: PD.PAT.stubble });
     }
     // hips blend into thighs
     for (const which of ['near', 'far']) {
@@ -250,7 +240,33 @@
       prims.push(cap(lg.hip, vlerp(lg.hip, lg.knee, 0.35), (f ? 6.0 * p.thighs : 6.4) * s, (f ? 5.4 * p.thighs : 5.8) * s));
     }
     G.body = { prims, ramp: skinRamp(c), k: 2.2, paints };
-    G.face = { prims: [], decal: faceDecal(c, T, hr) };
+    // Head is its own tight group: crisp profile (brow, pointed nose, lips, chin) and a
+    // jawline that outlines against the neck.
+    const R = D.headR;
+    const headPrims = f ? [
+      ell(T.Hc, R * 1.02, R * 0.9, aH),
+      ell(LH(-1.4, 2.0), 4.4 * hr, 3.7 * hr, aH),
+      cap(LH(-4.0, 3.2), LH(-2.0, -1.8), 1.6 * hr, 1.5 * hr),
+      ell(LH(-4.5, 3.9), 1.6 * hr, 1.7 * hr, aH),
+      cap(LH(0.6, 5.5), LH(-0.9, 6.9), 0.8 * hr, 0.35 * hr),
+      ell(LH(-2.7, 5.5), 0.7 * hr, 0.75 * hr, aH),
+      ell(LH(-3.6, 5.2), 0.75 * hr, 0.8 * hr, aH),
+    ] : [
+      ell(T.Hc, R * 1.02, R * 0.92, aH),
+      ell(LH(-1.4, 2.2), 4.6 * hr, 3.9 * hr, aH),
+      cap(LH(-4.3, 3.0), LH(-2.0, -2.0), 2.1 * hr, 1.9 * hr),
+      ell(LH(-4.7, 3.8), 2.1 * hr, 2.0 * hr, aH),
+      cap(LH(0.8, 5.7), LH(-1.0, 7.2), 1.0 * hr, 0.55 * hr),
+      ell(LH(-3.4, 5.6), 0.7 * hr, 0.7 * hr, aH),
+      ell(LH(2.4, 5.0), 1.0 * hr, 1.2 * hr, aH),
+    ];
+    const facePaints = [];
+    if (!f && p.beard) facePaints.push({ prims: [ell(LH(-3.4, 1.6), 3.4 * hr, 4.8 * hr, aH)], ramp: hairRamp(c), pat: PD.PAT.stubble });
+    G.face = { prims: headPrims, ramp: skinRamp(c), k: 1.0, paints: facePaints, decal: faceDecal(c, T, hr) };
+    G.ear = {
+      prims: [ell(LH(-0.4, -0.9), 2.0 * hr, 1.35 * hr, aH)], ramp: skinRamp(c), k: 1,
+      decal: (fb) => { const e = LH(-0.4, -0.7); fb.px(e.x, e.y, skinRamp(c) * 6 + 1); const e2 = LH(0.6, -0.7); fb.px(e2.x, e2.y, skinRamp(c) * 6 + 1); },
+    };
 
     // --- breasts ---
     if (f) {

@@ -43,14 +43,16 @@
       far: PD.legIK(m, mT, 'far', { x: mT.P.x + 40 * m.dims.s, y: by - 3.3 }, mT.f),
     };
     const wLegs = {
-      near: PD.legKneel(w, wT, 'near', by - 3, facing * 0.9, { x: -facing, y: 0.06 }, { x: -facing, y: 0.3 }),
-      far: PD.legKneel(w, wT, 'far', by - 4, facing * 0.8, { x: -facing, y: 0.02 }, { x: -facing, y: 0.25 }),
+      // squatting: feet planted beside his hips, knees up — keeps the space under her ass open
+      near: PD.legIK(w, wT, 'near', { x: wT.hip.x + facing * 17 * w.dims.s, y: by - 2.4 }, { x: facing, y: -0.5 }, null, 0.05),
+      far: PD.legIK(w, wT, 'far', { x: wT.hip.x + facing * 15 * w.dims.s, y: by - 3.4 }, { x: facing, y: -0.5 }, null, 0.05),
     };
     let wArms;
     if (!reverse) {
       wArms = {
-        near: PD.armIK(w, wT, 'near', ma(ma(mT.C, mT.f, 6.5), mT.u, -1), { x: -facing, y: 0.2 }),
-        far: PD.armIK(w, wT, 'far', ma(ma(mT.C, mT.f, 6.5), mT.u, 3), { x: -facing, y: 0.2 }),
+        // hands on his belly; elbows swing back so the arm frames the breast
+        near: PD.armIK(w, wT, 'near', ma(ma(mT.Wp, mT.f, 6.5), mT.u, 2), { x: -facing, y: 0.5 }),
+        far: PD.armIK(w, wT, 'far', ma(ma(mT.Wp, mT.f, 6.5), mT.u, 5), { x: -facing, y: 0.5 }),
       };
     } else {
       wArms = {
@@ -148,9 +150,11 @@
   }
 
   // Her near leg goes *behind* the shaft so the shaft stays on show in profile.
+  // Rule for every position: the shaft is drawn right before her body, so her body and
+  // legs always cover it; visibility comes from posing, never from draw-order cheats.
   const ORDER_RIDE = ['m.hairBack', 'm.farArm', 'm.farLeg', 'w.farLeg', 'm.body', 'm.face', 'm.hairFront', 'm.nearLeg',
-    'w.farArm', 'w.hairBack', 'w.nearLeg', 'm.balls', 'm.penis', 'w.farBreast', 'w.body', 'w.vulva', 'w.face',
-    'w.nearArm', 'w.breast', 'w.hairFront', 'm.nearArm'];
+    'w.farArm', 'w.hairBack', 'm.balls', 'm.penis', 'w.farBreast', 'w.body', 'w.vulva', 'w.face', 'w.breast',
+    'w.nearArm', 'w.hairFront', 'w.nearLeg', 'm.nearArm'];
 
   PD.POSITIONS = {
     cowgirl: {
@@ -163,9 +167,9 @@
     },
     missionary: {
       label: 'MISSIONARY', short: 'MISSN', solve: missionarySolve,
-      order: ['w.hairBack', 'w.farArm', 'w.farLeg', 'm.farLeg', 'm.farArm', 'w.farBreast', 'w.body', 'w.vulva', 'w.face',
-        'w.breast', 'w.hairFront', 'm.hairBack', 'm.body', 'm.face', 'm.hairFront', 'm.nearLeg', 'w.nearLeg', 'm.balls',
-        'm.penis', 'm.nearArm', 'w.nearArm'],
+      order: ['w.hairBack', 'w.farArm', 'w.farLeg', 'm.farLeg', 'm.farArm', 'm.balls', 'm.penis', 'w.farBreast', 'w.body',
+        'w.vulva', 'w.face', 'w.breast', 'w.hairFront', 'm.hairBack', 'm.body', 'm.face', 'm.hairFront', 'm.nearLeg',
+        'w.nearLeg', 'm.nearArm', 'w.nearArm'],
       speaker: 'w', impactRatio: 0.45, pillowTilt: -0.04,
     },
     doggy: {

@@ -44,7 +44,7 @@
     constructor() { this.pts = null; }
     reset() { this.pts = null; }
     // colliders: [{a, b, r}] capsules the hair drapes over (torso, shoulders)
-    step(root, n, seg, dt, head, headR, initDir, colliders) {
+    step(root, n, seg, dt, head, headR, initDir, colliders, plane) {
       if (!this.pts || this.pts.length !== n + 1) {
         const d = initDir || { x: 0, y: 1 };
         this.pts = [];
@@ -55,10 +55,10 @@
       }
       const P = this.pts;
       P[0].x = P[0].px = root.x; P[0].y = P[0].py = root.y;
-      const g = 420 * dt * dt;
+      const g = 620 * dt * dt;
       for (let i = 1; i <= n; i++) {
         const p = P[i];
-        const vx = (p.x - p.px) * 0.93, vy = (p.y - p.py) * 0.93;
+        const vx = (p.x - p.px) * 0.88, vy = (p.y - p.py) * 0.88;
         p.px = p.x; p.py = p.y;
         p.x += vx; p.y += vy + g;
       }
@@ -94,13 +94,18 @@
             const ql = Math.hypot(qx, qy) || 1;
             if (ql < c.r) { b.x += qx / ql * (c.r - ql); b.y += qy / ql * (c.r - ql); }
           }
+          // hair stays on the back side of the head: never across the face
+          if (plane) {
+            const d = (b.x - plane.pt.x) * plane.n.x + (b.y - plane.pt.y) * plane.n.y;
+            if (d > 0) { b.x -= plane.n.x * d; b.y -= plane.n.y * d; }
+          }
           if (b.y > PD.BED_Y + 1) b.y = PD.BED_Y + 1;
         }
       }
       // snap if something teleported
       for (let i = 1; i <= n; i++) {
         const p = P[i];
-        if (!isFinite(p.x) || PD.dist(p, root) > seg * n * 1.5) { this.pts = null; return this.step(root, n, seg, dt, head, headR, initDir, colliders); }
+        if (!isFinite(p.x) || PD.dist(p, root) > seg * n * 1.5) { this.pts = null; return this.step(root, n, seg, dt, head, headR, initDir, colliders, plane); }
       }
       return P;
     }
