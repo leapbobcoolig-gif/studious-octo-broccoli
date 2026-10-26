@@ -7,8 +7,8 @@ html = html.replace(/<script src="(src\/[^"]+)"><\/script>/g, (_, f) => '<script
 // artifact host supplies the document skeleton
 html = html.replace(/<!doctype html>\s*/i, '').replace(/<\/?html[^>]*>/g, '').replace(/<\/?head>/g, '').replace(/<\/?body>/g, '')
   .replace(/<meta charset="utf-8">\s*/, '').replace(/<meta name="viewport"[^>]*>\s*/, '');
-html = html.replace(/\s*<title>Pixel Dollhouse<\/title>/, '');
-html = '<title>Pixel Dollhouse</title>\n' + html.trim() + '\n';
+html = html.replace(/\s*<title>Swipe Straight<\/title>/, '');
+html = '<title>Swipe Straight</title>\n' + html.trim() + '\n';
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(root, 'dist', 'pixel-dollhouse.html'), html);
 console.log('wrote dist/pixel-dollhouse.html', html.length, 'bytes');

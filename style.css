@@ -60,3 +60,7 @@ body { display: flex; align-items: center; justify-content: center; font-family:
   font-family: inherit; font-size: calc(var(--u) * 5); padding: calc(var(--u) * 2.5) calc(var(--u) * 6); margin-top: calc(var(--u) * 3);
   background: #e8e8f0; color: #111; border: calc(var(--u) * 0.8) solid #000; cursor: pointer;
 }
+
+/* scenes: the HTML toolbar only exists in the sandbox; menus are drawn in-canvas */
+#stage:not(.sandbox) #toolbar, #stage:not(.sandbox) #panel { display: none; }
+#screen.nocursor { cursor: none; }

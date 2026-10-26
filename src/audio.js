@@ -65,5 +65,28 @@
     o.connect(lp); lp.connect(g); g.connect(A.master);
     o.start(t); o.stop(t + 0.22);
   };
+  // UI sounds: short square-wave chirps, a slam and a zap for the title.
+  A.ui = function (kind) {
+    if (!A.on || !A.ctx) return;
+    const t = A.ctx.currentTime;
+    const tone = (f0, f1, dur, type, vol, delay) => {
+      const o = A.ctx.createOscillator(), g = A.ctx.createGain();
+      o.type = type || 'square';
+      o.frequency.setValueAtTime(f0, t + (delay || 0));
+      o.frequency.exponentialRampToValueAtTime(f1, t + (delay || 0) + dur);
+      g.gain.setValueAtTime(vol, t + (delay || 0));
+      g.gain.exponentialRampToValueAtTime(0.0001, t + (delay || 0) + dur);
+      o.connect(g); g.connect(A.master); o.start(t + (delay || 0)); o.stop(t + (delay || 0) + dur + 0.02);
+    };
+    if (kind === 'hover') tone(880, 990, 0.03, 'square', 0.04);
+    else if (kind === 'nav') tone(660, 700, 0.04, 'square', 0.05);
+    else if (kind === 'click') { tone(520, 1040, 0.06, 'square', 0.08); tone(1040, 1560, 0.06, 'square', 0.05, 0.05); }
+    else if (kind === 'slam') { burst(180, 0.7, 0.6, 0.25); thump(70, 0.6, 0.3); }
+    else if (kind === 'zap') { tone(200, 2400, 0.35, 'sawtooth', 0.08); }
+    else if (kind === 'start') { [523, 659, 784, 1046].forEach((f, i) => tone(f, f, 0.09, 'square', 0.07, i * 0.07)); }
+  };
+  PD.applyAudio = function () {
+    if (A.master && PD.Settings) A.master.gain.value = PD.Settings.master * (0.2 + PD.Settings.sfx * 0.8);
+  };
   PD.Audio = A;
 })(window.PD);

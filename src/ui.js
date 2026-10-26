@@ -47,7 +47,7 @@
     for (const c of [S.w, S.m]) { PD.refreshDims(c); c.hair.reset(); for (const k in c.sp) c.sp[k].reset(); }
   };
 
-  PD.UI = function (root, D, S, app) {
+  PD.UI_SANDBOX = function (root, D, S, app) {
     const bar = root.querySelector('#toolbar');
     const panel = root.querySelector('#panel');
     let open = null;
@@ -81,6 +81,7 @@
     const lampB = btn('LAMP', 'Lamp on/off (L)', () => { app.lampOn = !app.lampOn; });
     const sndB = btn('SND', 'Sound (S)', () => { PD.Audio.enable(!PD.Audio.on); });
     btn('HIDE', 'Hide UI (H)', () => app.toggleUI());
+    btn('MENU', 'Back to menu (Esc)', () => { panel.classList.add('hidden'); open = null; app.toMenu(); });
 
     function toggle(which) {
       open = open === which ? null : which;

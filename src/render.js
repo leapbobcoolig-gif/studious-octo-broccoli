@@ -36,6 +36,15 @@
       for (let j = y0; j < y1; j++)
         for (let i = x0; i < x1; i++) if (bayer(i, j) < level) this.buf[j * W + i] = c;
     }
+    // Clean dim: step every pixel down its own ramp (no dither noise).
+    darken(steps) {
+      const b = this.buf;
+      for (let i = 0; i < b.length; i++) {
+        const v = b[i], sh = v % 6;
+        if (sh === 5 || sh === 0) continue;
+        b[i] = v - Math.min(steps, sh - 1 > 0 ? sh - 1 : 0) - (sh - steps < 1 ? 0 : 0);
+      }
+    }
     line(x0, y0, x1, y1, c) {
       x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
       const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
@@ -259,6 +268,14 @@
   const HEART = ['.#.#.', '#####', '#####', '.###.', '..#..'];
   G['♥'] = HEART;
   PD.HEART = HEART;
+  Object.assign(G, {
+    "'": ['#', '#', '.', '.', '.'], ',': ['.', '.', '.', '#', '#'], '%': ['#.#', '..#', '.#.', '#..', '#.#'],
+    '/': ['..#', '..#', '.#.', '#..', '#..'], '$': ['.##', '##.', '.#.', '.##', '##.'],
+    '(': ['.#', '#.', '#.', '#.', '.#'], ')': ['#.', '.#', '.#', '.#', '#.'], '&': ['.#.', '#.#', '.#.', '#.#', '.##'],
+    '<': ['..#', '.#.', '#..', '.#.', '..#'], '>': ['#..', '.#.', '..#', '.#.', '#..'], '=': ['...', '###', '...', '###', '...'],
+    '"': ['#.#', '#.#', '...', '...', '...'], '#': ['#.#', '###', '#.#', '###', '#.#'], '_': ['...', '...', '...', '...', '###'],
+  });
+  PD.GLYPHS = G;
 
   PD.textWidth = (str) => {
     let w = 0;
