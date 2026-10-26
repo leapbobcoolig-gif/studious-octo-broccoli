@@ -61,3 +61,8 @@ NODE_PATH=$(npm root -g) node tools/shot.js out/ 'pos=doggy&phase=0.1&palette=co
 
 URL params: `pos`, `t` (seconds to simulate), `phase`, `speed`, `arousal`, `palette`, `seed=rand`,
 `to`/`tt` (transition preview), `click=<button>`, `#x,y,w,h` (6x crop). The tool exits non-zero on console errors.
+
+## Single-file build
+
+`node tools/bundle.js` inlines everything into `dist/pixel-dollhouse.html` (git-ignored). That one file is the
+version published as a private claude.ai artifact.

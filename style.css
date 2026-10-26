@@ -1,5 +1,7 @@
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: #0b0a0f; overflow: hidden; }
+:root { --bg: #0b0a0f; --fg: #e8e8f0; color-scheme: dark; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; }
+body { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 body { display: flex; align-items: center; justify-content: center; font-family: 'Silkscreen', ui-monospace, monospace; }
 
 #stage { position: relative; --u: 3px; user-select: none; }

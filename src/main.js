@@ -32,8 +32,9 @@
   if (q.get('gate') === '0') document.getElementById('gate').remove();
 
   function resize() {
-    const s = Math.max(1, Math.floor(Math.min(innerWidth / W, innerHeight / H)));
-    const sc = innerWidth < W || innerHeight < H ? Math.min(innerWidth / W, innerHeight / H) : s;
+    const aw = Math.max(100, innerWidth - 32), ah = Math.max(60, innerHeight - 8);
+    const s = Math.max(1, Math.floor(Math.min(aw / W, ah / H)));
+    const sc = aw < W || ah < H ? Math.min(aw / W, ah / H) : s;
     stage.style.width = W * sc + 'px';
     stage.style.height = H * sc + 'px';
     stage.style.setProperty('--u', sc + 'px');
