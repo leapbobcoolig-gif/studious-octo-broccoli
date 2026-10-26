@@ -39,8 +39,8 @@
     if (k.shakeW) { const j = { x: PD.rnd(-0.6, 0.6), y: PD.rnd(-0.4, 0.4) }; for (const key of ['P', 'Wp', 'C', 'neckBase', 'Hc', 'shoulder', 'hip']) wT[key] = add(wT[key], mul(j, k.shakeW)); }
 
     const mLegs = {
-      near: PD.legIK(m, mT, 'near', { x: mT.P.x + 38 * m.dims.s, y: by - 2.6 }, mT.f),
-      far: PD.legIK(m, mT, 'far', { x: mT.P.x + 40 * m.dims.s, y: by - 3.3 }, mT.f),
+      near: PD.legIK(m, mT, 'near', { x: mT.P.x + 41.5 * m.dims.s, y: by - 2.6 }, mT.f),
+      far: PD.legIK(m, mT, 'far', { x: mT.P.x + 41 * m.dims.s, y: by - 3.3 }, mT.f),
     };
     const wLegs = {
       // squatting: feet planted beside his hips, knees up — keeps the space under her ass open
@@ -153,7 +153,7 @@
   // Rule for every position: the shaft is drawn right before her body, so her body and
   // legs always cover it; visibility comes from posing, never from draw-order cheats.
   const ORDER_RIDE = ['m.hairBack', 'm.farArm', 'm.farLeg', 'w.farLeg', 'm.body', 'm.face', 'm.hairFront', 'm.nearLeg',
-    'w.farArm', 'w.hairBack', 'm.balls', 'm.penis', 'w.farBreast', 'w.body', 'w.vulva', 'w.face', 'w.breast',
+    'w.farArm', 'w.hairBack', 'm.balls', 'm.penis', 'w.body', 'w.vulva', 'w.face', 'w.breast',
     'w.nearArm', 'w.hairFront', 'w.nearLeg', 'm.nearArm'];
 
   PD.POSITIONS = {
@@ -167,7 +167,7 @@
     },
     missionary: {
       label: 'MISSIONARY', short: 'MISSN', solve: missionarySolve,
-      order: ['w.hairBack', 'w.farArm', 'w.farLeg', 'm.farLeg', 'm.farArm', 'm.balls', 'm.penis', 'w.farBreast', 'w.body',
+      order: ['w.hairBack', 'w.farArm', 'w.farLeg', 'm.farLeg', 'm.farArm', 'm.balls', 'm.penis', 'w.body',
         'w.vulva', 'w.face', 'w.breast', 'w.hairFront', 'm.hairBack', 'm.body', 'm.face', 'm.hairFront', 'm.nearLeg',
         'w.nearLeg', 'm.nearArm', 'w.nearArm'],
       speaker: 'w', impactRatio: 0.45, pillowTilt: -0.04,
@@ -175,7 +175,7 @@
     doggy: {
       label: 'DOGGY', short: 'DOGGY', solve: doggySolve,
       order: ['w.hairBack', 'w.farArm', 'w.farLeg', 'm.farLeg', 'm.farArm', 'm.hairBack', 'm.balls', 'm.penis',
-        'm.body', 'm.face', 'm.hairFront', 'w.farBreast', 'w.body', 'w.vulva', 'w.face', 'w.breast', 'w.hairFront',
+        'm.body', 'm.face', 'm.hairFront', 'w.body', 'w.vulva', 'w.face', 'w.breast', 'w.hairFront',
         'w.nearLeg', 'w.nearArm', 'm.nearLeg', 'm.nearArm'],
       speaker: 'w', impactRatio: 0.45, pillowTilt: 0,
     },

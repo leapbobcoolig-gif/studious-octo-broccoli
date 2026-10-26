@@ -70,7 +70,8 @@
     const prims = [
       cap(arm.sh, arm.el, (f ? 2.5 : 3.0 + mu * 0.7) * s, (f ? 2.0 : 2.4 + mu * 0.3) * s),
       cap(arm.el, arm.wr, (f ? 2.0 : 2.5 + mu * 0.3) * s, (f ? 1.4 : 1.8) * s),
-      ell(arm.hand, 2.5 * s, (f ? 1.6 : 1.9) * s, ang(faV)),
+      cap(arm.wr, ma(arm.wr, faV, 3.6 * s), (f ? 1.55 : 1.9) * s, (f ? 1.0 : 1.25) * s),
+      ell(ma(ma(arm.wr, faV, 1.2 * s), PD.perp(faV), 0.9 * s), 1.1 * s, 0.7 * s, ang(faV) + 0.5),
     ];
     if (!f && mu > 0.2) prims.push(ell(vlerp(arm.sh, arm.el, 0.45), D.uarm * 0.3, (2.6 + mu * 1.2) * s, ang(upV)));
     return { prims, ramp: skinRamp(c), k: 1.4, bias: far ? -1.2 : 0 };
@@ -144,7 +145,8 @@
     if (f) {
       const style = p.hairStyle;
       if (style === 'long' || style === 'pony' || style === 'bob') {
-        back.push(ell(H(0.3, -2.3), (style === 'bob' ? 7.2 : 6.4) * hr, (style === 'bob' ? 5.6 : 4.8) * hr, aH));
+        front.push(ell(H(0.6, -2.6), (style === 'bob' ? 7.2 : 6.6) * hr, (style === 'bob' ? 5.4 : 4.6) * hr, aH));
+        back.push(ell(H(-1.0, -3.0), 5.0 * hr, 4.2 * hr, aH));
         const cfg = style === 'long' ? { root: H(0.2, -5.0), n: 6, seg: 5.2 * D.s, r0: 4.2, r1: 1.3 }
           : style === 'pony' ? { root: H(4.0, -5.4), n: 4, seg: 4.4 * D.s, r0: 2.6, r1: 1.0 }
             : { root: H(-1.0, -3.8), n: 2, seg: 3.2 * D.s, r0: 4.2, r1: 3.0 };
@@ -278,20 +280,35 @@
       const center = add(ma(A, T.fc, r * 0.35), off);
       const se = softEll(center, r, off, T.fc, 0.45);
       const bra = p.bra ? [{ prims: [ell(se.c, se.rx * 1.2, se.ry * 1.2, se.a)], ramp: PD.R.cloth0, pat: PD.PAT.lace }] : null;
-      G.farBreast = {
-        prims: [ell(ma(ma(se.c, T.uc, 1.4 * s), T.fc, -0.6 * s), se.rx * 0.95, se.ry * 0.95, se.a)],
-        ramp: skinRamp(c), k: 1.5, bias: -1.2, paints: bra,
-      };
+      // Breasts are part of the torso's smooth union, so they grow out of the chest
+      // instead of sitting on it like a ball; only an underboob crease is drawn.
       const od = len(off) > 0.05 ? norm(off) : { x: 0, y: 1 };
       const nd = norm(add(T.fc, mul(od, 0.5)));
       const rr = (se.rx + se.ry) * 0.5;
+      G.body.prims.push(
+        ell(se.c, se.rx, se.ry, se.a),
+        cap(LC(2.4 * s, 2.0 * s), ma(se.c, T.uc, rr * 0.25), r * 0.75, r * 0.8),
+        ell(ma(ma(se.c, T.uc, 1.6 * s), T.fc, -0.8 * s), se.rx * 0.9, se.ry * 0.9, se.a),
+      );
+      if (bra) G.body.paints.push(bra[0]);
+      const down = PD.perpToward(T.fc, { x: -T.uc.x, y: -T.uc.y });
       G.breast = {
-        prims: [ell(se.c, se.rx, se.ry, se.a)], ramp: skinRamp(c), k: 1.5, paints: bra,
-        decal: p.bra ? (fb) => {
-          const top = ma(se.c, T.uc, rr * 0.9);
-          fb.line(top.x, top.y, T.shoulder.x, T.shoulder.y, C('cloth0', 2));
-        } : (fb) => {
+        prims: [],
+        decal: (fb) => {
           const sk2 = skinRamp(c) * 6;
+          // underboob crease: lower arc of the breast where it meets the ribcage
+          for (let t = -0.2; t <= 1.1; t += 0.12) {
+            const dx = Math.cos(Math.PI * 0.5 * t), dy = Math.sin(Math.PI * 0.5 * t);
+            const v = norm(add(mul(T.fc, dx * 0.6), mul(down, 1)));
+            const w = norm(add(mul(down, dy), mul(mul(T.fc, -1), 1 - dy)));
+            const pt = ma(se.c, norm(add(v, mul(w, 0.6))), rr * 0.92);
+            fb.px(pt.x, pt.y, sk2 + 1);
+          }
+          if (p.bra) {
+            const top = ma(se.c, T.uc, rr * 0.9);
+            fb.line(top.x, top.y, T.shoulder.x, T.shoulder.y, C('cloth0', 2));
+            return;
+          }
           const np = ma(se.c, nd, rr - 1.0);
           const side = PD.perp(nd);
           fb.px(np.x, np.y, sk2 + 5);
