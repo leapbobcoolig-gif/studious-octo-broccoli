@@ -80,6 +80,33 @@
   }
 
   let lastDt = 1 / 60;
+  // The sex scene itself (room, bed, bodies, FX) with no HUD. opts.decor -> Tyler's room decor flips.
+  function drawStage(fb2, opts) {
+    const st = { bedOff: D.bedOff, wet: D.fx.wet, lampOn: app.lampOn, decor: opts && opts.decor };
+    PD.drawRoom(fb2, D.t, st);
+    PD.drawBed(fb2, D.t, st);
+    PD.drawPillow(fb2, st, PD.POSITIONS[D.pos].pillowTilt);
+    const sk = D.skel;
+    if (sk) {
+      const dt = Math.min(1 / 30, lastDt);
+      const G = {
+        w: PD.buildBody(S.w, sk.w, dt, { creamW: D.cream }),
+        m: PD.buildBody(S.m, sk.m, dt, { wet: D.wetness }),
+      };
+      for (const name of PD.POSITIONS[D.pos].order) {
+        const [who, part] = name.split('.');
+        const g = G[who][part];
+        if (!g) continue;
+        g.clipY = PD.BED_Y + D.bedOff + 2.5;
+        if (!g.prims.length) { if (g.decal) g.decal(fb2); } else PD.drawGroup(fb2, g);
+        if (part === 'hairFront' && G[who].ear) { G[who].ear.clipY = g.clipY; PD.drawGroup(fb2, G[who].ear); }
+      }
+    }
+    PD.drawBedFront(fb2, D.t, st);
+    D.fx.draw(fb2);
+    if (D.flash > 0) fb2.drect(0, 0, W, H, C('ui', 4), D.flash * 0.7);
+  }
+  PD.STAGE = { D, S, app, draw: drawStage, get dt() { return lastDt; } };
   function drawSandbox() {
     const st = { bedOff: D.bedOff, wet: D.fx.wet, lampOn: app.lampOn };
     PD.drawRoom(fb, D.t, st);
@@ -130,7 +157,7 @@
   function render() {
     PD.SM.draw(fb);
     PD.present(ctx, fb, PD.PALETTES[PD.Settings.palette + (app.lampOn ? '' : 'Dark')] || PD.PALETTES.color);
-    const shake = Math.max(PD.SM.cur === 'sandbox' ? D.shake : 0, PD.SM.shake) > 0 && PD.Settings.shake;
+    const shake = Math.max(PD.SM.cur === 'sandbox' || PD.SM.cur === 'room' ? D.shake : 0, PD.SM.shake) > 0 && PD.Settings.shake;
     canvas.style.transform = shake ? `translate(calc(var(--u) * ${Math.round(PD.rnd(-1, 1))}), calc(var(--u) * ${Math.round(PD.rnd(-1, 1))}))` : '';
     canvas.classList.toggle('nocursor', PD.SM.cur !== 'sandbox');
   }

@@ -108,6 +108,7 @@
       for (const c of [w, m]) if (c.arousal > 0.3) c.face.mouthT = 0.2 + c.arousal * 0.35;
       this.wetness = Math.min(1, this.wetness + 0.01);
       if (this.onImpact) this.onImpact(strength);
+      if (this.onHit) this.onHit(strength);
     }
 
     update(dt) {

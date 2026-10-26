@@ -26,7 +26,7 @@
           p.vy += 150 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
           if (p.y >= by + 1 && p.x > 64 && p.x < 258) {
             p.life = 0;
-            if (p.kind === 'fluid') this.addWet(p.x);
+            if (p.kind === 'fluid' || p.kind === 'squirt') this.addWet(p.x);
           } else if (p.y > 180) p.life = 0;
         }
       }
@@ -46,9 +46,10 @@
           if (a < 0.3 && PD.bayer(Math.round(p.x), Math.round(p.y)) > a * 3) continue;
           PD.sprite(fb, p.big ? PD.HEART : ['#.#', '###', '.#.'], p.x, p.y, C('heart', 3), C('heart', 0));
         } else if (p.type === 'drop') {
-          const col = p.kind === 'fluid' ? C('fluid', 3) : C('sweat', 2);
+          const col = p.kind === 'fluid' ? C('fluid', 3) : p.kind === 'squirt' ? C('sweat', 3) : C('sweat', 2);
           fb.px(p.x, p.y, col);
           if (p.kind === 'fluid') fb.px(p.x, p.y - 1, C('fluid', 2));
+          else if (p.kind === 'squirt') { fb.px(p.x - p.vx * 0.012, p.y - p.vy * 0.012, C('sweat', 4)); fb.px(p.x - p.vx * 0.024, p.y - p.vy * 0.024, C('sweat', 2)); }
           else fb.px(p.x, p.y - 1, C('sweat', 4));
         }
       }

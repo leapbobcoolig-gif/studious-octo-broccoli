@@ -91,6 +91,7 @@
     closed: { d: [[0, -1], [0, 0]], w: [] },
     rolled: { d: [[1, -1], [1, 0], [0, 0]], w: [[0, -1]] },
     heart: { d: [[0, -1], [0, 0]], w: [] },
+    wide: { d: [[0, 0], [2, -1], [2, 0]], w: [[1, -1], [1, 0], [0, -1], [-1, -1], [-1, 0]] },
   };
   const MOUTH = [
     { d: [[0, -1]], l: [[0, 0]] },
@@ -130,6 +131,19 @@
           const x = Math.round(K.x + fw.x * i + up.x * j), y = Math.round(K.y + fw.y * i + up.y * j);
           if (PD.bayer(x, y) < fc.blush * 0.85) fb.px(x, y, C('heart', 3));
         }
+      }
+      // squirted in the face: glistening drops across the face
+      if (c.faceWet > 0) {
+        for (const [a, b] of [[1, 1], [-1, 2], [-2, 0], [0, 3], [-3, 2], [2, -1], [-4, 1], [-1, -2]]) {
+          const q = H(a * 0.9, 3 + b * 0.5);
+          if (PD.bayer(Math.round(q.x), Math.round(q.y)) < c.faceWet) fb.px(q.x, q.y, (a + b) % 2 ? C('sweat', 4) : C('sweat', 3));
+        }
+      }
+      // blindfold: satin band over the eyes, wrapping back to the ear, knot at the back
+      if (c.blindfold) {
+        for (let b = -9; b <= 2; b++) for (let a = -1; a <= 2; a++) at(E, a, b, a === 2 ? C('cloth3', 3) : b === 2 ? C('cloth3', 1) : C('cloth3', 2));
+        const K = H(1.2, -6.4);
+        at(K, 0, 0, C('cloth3', 2)); at(K, -1, -1, C('cloth3', 1)); at(K, -2, -1, C('cloth3', 1)); at(K, -2, 0, C('cloth3', 2)); at(K, -3, -1, C('cloth3', 1));
       }
       // sweat bead on the temple
       if (c.arousal > 0.6) { const s2 = H(3.4, 1.0); fb.px(s2.x, s2.y, C('sweat', 2)); fb.px(s2.x, s2.y - 1, C('sweat', 4)); }
@@ -351,7 +365,9 @@
           clips: [{ pt: ma(gc, tipDir, -0.9 * g / 1.95), n: tipDir }] });
       }
       G.penis = {
-        prims: pr, ramp: skinRamp(c), k: 1.0, paints: pp,
+        prims: pr, ramp: skinRamp(c), k: 1.0,
+        // condom: a slightly see-through latex sleeve over the shaft
+        paints: c.condom ? [{ prims: [cap(ma(pn.B, dirv, 1.5), ma(pn.B, dirv, vis + 2), g * 1.6, g * 1.6)], ramp: PD.R.sweat, pat: PD.PAT.lace, map: [0, 1, 2, 3, 3, 3] }].concat(pp) : pp,
         softRoots: [{ pt: pn.B, r: g * 2.4 }],
         decal: (fb) => {
           const sk2 = skinRamp(c) * 6;

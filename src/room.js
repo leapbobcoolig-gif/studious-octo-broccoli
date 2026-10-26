@@ -137,6 +137,95 @@
     fb.px(308, 88, C('lamp', 3));
   }
 
+  // ---------- his stuff: pride (flip=false) vs frat (flip=true) ----------
+  // decor = { flip: [6 bools], poof: [6 seconds-since-flip] }
+  const G = (fb, ramp, prims, o) => PD.drawGroup(fb, Object.assign({ prims, ramp: PD.R[ramp], k: 2.5 }, o || {}));
+  const P = (x, y) => ({ x, y });
+  function decor(fb, t, d) {
+    const F = d.flip;
+    // 0: fairy lights along the ceiling
+    if (!F[0]) for (let x = 6; x < 316; x += 7) {
+      const y = 9 + Math.round(2.5 * Math.sin(x * 0.11));
+      fb.px(x, y - 1, C('ink', 2)); fb.px(x + 3, y + (Math.sin((x + 3) * 0.11) > 0 ? 0 : 1), C('ink', 2));
+      if (Math.sin(t * 3 + x) > -0.5) { fb.px(x, y, C('pride', ((x / 7) | 0) % 6)); fb.px(x, y + 1, C('pride', ((x / 7) | 0) % 6)); }
+    }
+    // 1: pride flag between the windows -> sports pennant
+    const fx = 158, fy = 24;
+    fb.rect(fx - 1, fy - 2, 1, 26, C('wood', 1)); fb.px(fx - 1, fy - 3, C('frame', 4));
+    if (!F[1]) {
+      for (let i = 0; i < 6; i++) for (let x = 0; x < 26; x++) fb.rect(fx + x, fy + i * 3 + Math.round(Math.sin(t * 2 + x * 0.3) * 0.8 * (x / 26)), 1, 3, C('pride', i));
+    } else {
+      for (let x = 0; x < 28; x++) { const h = Math.round(18 * (1 - x / 28)); fb.rect(fx + x, fy + 9 - h / 2, 1, Math.max(1, h), x === 27 ? C('cloth1', 1) : C('cloth1', 2)); fb.px(fx + x, fy + 9 - h / 2, C('cloth1', 3)); }
+      PD.text(fb, 'STATE', fx + 2, fy + 7, C('ui', 4));
+    }
+    // 2: neon sign left of the window
+    const nx = 50, ny = 22;
+    fb.rect(nx, ny, 38, 15, C('ink', 0)); fb.rect(nx + 1, ny + 1, 36, 13, C('ink', 1));
+    const flick = Math.sin(t * 17) > -0.85;
+    if (!F[2]) {
+      PD.text(fb, 'LOVE IS', nx + 5, ny + 2, flick ? C('neon', 3) : C('neon', 1));
+      PD.text(fb, 'LOVE', nx + 11, ny + 8, flick ? C('neon', 3) : C('neon', 1));
+      PD.sprite(fb, PD.HEART, nx + 29, ny + 8, C('neon', 3));
+      fb.ellipse(nx + 19, ny + 7, 24, 12, C('neon', 1), 0.12);
+    } else {
+      PD.text(fb, 'COLD', nx + 11, ny + 2, flick ? C('cyan', 3) : C('cyan', 1));
+      PD.text(fb, 'BEER', nx + 11, ny + 8, flick ? C('gold', 3) : C('gold', 1));
+      fb.ellipse(nx + 19, ny + 7, 24, 12, C('cyan', 1), 0.12);
+    }
+    // 3: poster on the far left wall
+    const px = 8, py = 12, pw = 34, ph = 50;
+    fb.rect(px - 1, py - 1, pw + 2, ph + 2, C('ink', 0));
+    if (!F[3]) {
+      // pop diva: pink, sparkles, ponytail silhouette, mic
+      fb.rect(px, py, pw, ph, C('heart', 3)); fb.drect(px, py, pw, ph, C('cloth3', 3), 0.3);
+      for (let k = 0; k < 6; k++) fb.px(px + 3 + ((k * 13) % 28), py + 4 + ((k * 7) % 30), Math.sin(t * 4 + k) > 0 ? C('ui', 4) : C('heart', 4));
+      G(fb, 'cloth3', [PD.ell(P(px + 17, py + 18), 5, 6), PD.cap(P(px + 17, py + 12), P(px + 25, py + 30), 3.2, 1.2), PD.cap(P(px + 17, py + 26), P(px + 17, py + 44), 7, 5)], { lift: -0.3 });
+      PD.text(fb, 'QUEEN', px + 7, py + ph - 7, C('ui', 4));
+    } else {
+      // babes: beach, a bikini girl. tits for the wall.
+      fb.rect(px, py, pw, ph * 0.55, C('cyan', 3)); fb.rect(px, py + ph * 0.55, pw, ph * 0.45, C('gold', 3));
+      const bx = px + 17, by = py + 10;
+      G(fb, 'skin1', [PD.ell(P(bx, by + 3), 3.4, 4), PD.cap(P(bx, by + 9), P(bx, by + 22), 4.2, 3), PD.ell(P(bx - 2.5, by + 12), 3, 2.8), PD.ell(P(bx + 2.5, by + 12), 3, 2.8),
+        PD.ell(P(bx, by + 24), 5.5, 4), PD.cap(P(bx - 2.5, by + 26), P(bx - 3.5, by + 38), 2.6, 1.8), PD.cap(P(bx + 2.5, by + 26), P(bx + 3.5, by + 38), 2.6, 1.8)], { k: 2 });
+      G(fb, 'hair2', [PD.ell(P(bx, by + 1), 4, 3), PD.cap(P(bx + 3, by + 2), P(bx + 5, by + 12), 2, 1)]);
+      fb.rect(bx - 5, by + 11, 4, 2, C('cloth1', 2)); fb.rect(bx + 1, by + 11, 4, 2, C('cloth1', 2)); fb.rect(bx - 4, by + 23, 8, 3, C('cloth1', 2));
+      PD.text(fb, 'BABES', px + 7, py + ph - 7, C('cloth1', 2));
+    }
+    // 4: hanging from the ceiling over the dresser: disco ball -> mini hoop on the wall
+    if (!F[4]) {
+      fb.line(294, 5, 294, 15, C('frame', 1));
+      G(fb, 'frame', [PD.ell(P(294, 22), 7, 7)], { lift: 0.15 });
+      for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if (i * i + j * j < 6) { const sp = Math.sin(t * 5 + i * 2 + j * 3) > 0.4; fb.px(294 + i * 2.4, 22 + j * 2.4, sp ? C('ui', 4) : C('frame', 1)); }
+      for (let k = 0; k < 5; k++) { const a = t * 0.8 + k * 1.3; const sx = 294 + Math.cos(a) * (30 + k * 8), sy = 40 + Math.sin(a * 1.3) * 14; fb.px(sx, sy, C('ui', 4)); }
+    } else {
+      fb.rect(282, 8, 24, 16, C('ink', 0)); fb.rect(283, 9, 22, 14, C('ui', 4)); fb.rect(289, 14, 10, 7, C('cloth1', 2)); fb.rect(290, 15, 8, 5, C('ui', 4));
+      fb.rect(287, 23, 14, 2, C('cloth1', 3));
+      for (let k = 0; k < 5; k++) fb.line(288 + k * 3, 25, 289 + k * 2.4, 33, C('ui', 3));
+      fb.line(288, 33, 300, 33, C('ui', 3));
+    }
+    // 5: on the nightstand: unicorn plush -> beer cans
+    if (!F[5]) {
+      const ux = 47, uy = 103;
+      G(fb, 'ui', [PD.ell(P(ux, uy + 2), 5, 3.6), PD.ell(P(ux - 4, uy - 2), 3, 2.8), PD.cap(P(ux - 3, uy + 3), P(ux - 3, uy + 6), 1.2), PD.cap(P(ux + 3, uy + 3), P(ux + 3, uy + 6), 1.2)], { lift: 0.25 });
+      fb.line(ux - 6, uy - 5, ux - 8, uy - 9, C('gold', 4)); fb.px(ux - 7, uy - 7, C('gold', 2));
+      for (let k = 0; k < 4; k++) fb.px(ux - 2 + k, uy - 3 + (k % 2), C('pride', k + 1));
+      fb.px(ux - 5, uy - 3, C('ink', 0));
+    } else {
+      for (const [bx, tilt] of [[40, 0], [45, 0], [51, 1]]) {
+        if (tilt) { fb.rect(bx - 2, 106, 7, 4, C('ink', 0)); fb.rect(bx - 1, 107, 6, 2, C('cloth1', 2)); continue; }
+        fb.rect(bx - 1, 101, 6, 9, C('ink', 0)); fb.rect(bx, 102, 4, 7, C('cloth1', 2)); fb.rect(bx, 102, 4, 1, C('frame', 4)); fb.rect(bx, 102, 1, 7, C('cloth1', 3)); fb.rect(bx + 1, 104, 2, 2, C('ui', 4));
+      }
+    }
+    // poof clouds where things just flipped
+    const spots = [[160, 10], [172, 34], [69, 29], [25, 37], [294, 22], [46, 103]];
+    d.poof.forEach((pt, i) => {
+      if (pt === undefined || pt > 0.6) return;
+      const [cx, cy] = spots[i], r = 6 + pt * 26, a = 1 - pt / 0.6;
+      fb.ellipse(cx, cy, r, r * 0.7, C('ui', 4), a * 0.7);
+      for (let k = 0; k < 8; k++) { const an = k * 0.785 + pt * 3; fb.px(cx + Math.cos(an) * r * 1.2, cy + Math.sin(an) * r * 0.9, C('gold', 4)); }
+    });
+  }
+
   // Static-ish back layer (wall, floor, windows, furniture behind the bed).
   PD.drawRoom = function (fb, t, st) {
     const lampOn = st.lampOn !== false;
@@ -168,6 +257,7 @@
     for (const win of WINS) windowPane(fb, win, t);
     nightstand(fb, t, lampOn);
     dresser(fb);
+    if (st.decor) decor(fb, t, st.decor);
     // rug
     fb.ellipse(160, 166, 120, 11, C('cloth3', 1));
     fb.ellipse(160, 166, 116, 9, C('cloth3', 2));

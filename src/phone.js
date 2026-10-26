@@ -454,7 +454,7 @@
         PD.text(A, Math.max(1, 4 - Math.floor(this.end.t / 1.5)) + ' MIN. BLINDFOLD: ON', X + 12, cy + 62, C('gold', 3));
         if (this.end.t > 0.6 && UI.button(A, 'ready', X + 12, cy + 72, S.w - 24, 14, 'GET THE ROOM READY >>', { ramp: 'neon' })) {
           const sv = PD.Save.load() || {}; sv.chapter = 'room'; sv.trick = 'blind'; sv.trust = this.trust; PD.Save.write(sv);
-          PD.Audio.ui('start'); SM.go('chapter');
+          PD.Audio.ui('start'); SM.go('room');
         }
       }
     },
