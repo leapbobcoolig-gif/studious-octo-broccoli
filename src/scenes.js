@@ -101,7 +101,8 @@
       fb.rect(0, y, W, 1, C('night', 0));
       fb.drect(0, y, W, 1, C('night', 1), f * 1.8);
       fb.drect(0, y, W, 1, C('night', 2), Math.max(0, f - 0.35) * 2);
-      if (f > 0.6) fb.rect(0, y, W, 1, f > 0.72 ? C('neon', 1) : C('night', 3));
+      if (f > 0.55) fb.drect(0, y, W, 1, C('night', 3), (f - 0.55) * 4);
+      if (f > 0.7) fb.drect(0, y, W, 1, C('neon', 5), (f - 0.7) * 5);
     }
     for (const s of STARS) {
       const tw = Math.sin(t * 2 + s.ph);
@@ -144,6 +145,8 @@
     PD.text(fb, online, x + 5, y + 79, C('gold', 3));
     fb.rect(x + 20, y + 3, 10, 1, C('ink', 3));
   }
+
+  PD.drawPhone = drawPhone;
 
   // ---------- BOOT (18+) ----------
   SM.scenes.boot = {
@@ -244,7 +247,7 @@
       }
       // right side: phone preview with live counter + tip
       drawPhone(fb, 214, 50, SM.t, false, '10,000 ONLINE');
-      const tips = [['ANON GUYS', 'LOVE A BLINDFOLD'], ["GYM BROS CAN'T", 'REFUSE A BET'], ['THE COUNTER ONLY', 'GOES ONE WAY']];
+      const tips = [['TWINKS LOVE A', 'BLINDFOLD. DUMMIES.'], ["GYM BROS CAN'T", 'REFUSE A BET'], ['THE COUNTER ONLY', 'GOES ONE WAY'], ['NO FATS NO FEMS', 'NO VAGINAS. YET.'], ['BEARS GET DRUNK', 'FAST. CHEAP DATE.'], ['EVERY FAG IS ONE', 'PUSSY AWAY. MATH.']];
       const tip = tips[Math.floor(SM.t / 4) % tips.length];
       PD.panel(fb, 196, 146, 86, 20, 'ink', { fill: 2 });
       PD.textS(fb, 'TIP', 200, 149, 1, C('gold', 2));
@@ -257,7 +260,7 @@
         if (r === 1) { this.confirm = null; startNew(); } else if (r === -1) this.confirm = null;
         return;
       }
-      if (picked === 'continue') SM.go('chapter');
+      if (picked === 'continue') SM.go(PD.chapterScene(save));
       if (picked === 'new') { if (save) { this.confirm = 'new'; UI.focus = 99; } else startNew(); }
       if (picked === 'settings') { SM.scenes.settings.from = 'menu'; SM.go('settings'); }
       if (picked === 'sandbox') SM.go('sandbox');
@@ -266,7 +269,7 @@
   };
   function startNew() {
     PD.Save.write({ v: 1, started: Date.now(), chapter: 'intro', converted: 0, cash: 0 });
-    SM.go('chapter');
+    SM.go('intro');
   }
 
   // ---------- SETTINGS ----------
@@ -311,10 +314,11 @@
     draw(fb) {
       PD.drawSkyline(fb, SM.t, 0.55);
       PD.panel(fb, 50, 30, 220, 110, 'neon', { fill: 0, inner: 'ink', innerShade: 1 });
-      PD.textS(fb, 'CHAPTER 1', W / 2, 42, 2, C('gold', 2), { center: true, outline: C('ink', 0) });
-      PD.textS(fb, 'THE PROFILE', W / 2, 58, 2, C('neon', 2), { center: true, outline: C('ink', 0), wave: 1, t: this.t });
-      PD.textS(fb, 'THE INTRO CUTSCENE + FIRST GUY', W / 2, 82, 1, C('ui', 4), { center: true });
-      PD.textS(fb, 'ARRIVE IN MILESTONES 2-5.', W / 2, 90, 1, C('ui', 4), { center: true });
+      PD.textS(fb, 'CHAPTER 2', W / 2, 42, 2, C('gold', 2), { center: true, outline: C('ink', 0) });
+      PD.textS(fb, 'TYLER, 21', W / 2, 58, 2, C('neon', 3), { center: true, outline: C('ink', 0), wave: 1, t: this.t });
+      PD.textS(fb, 'HE IS STILL TYPING. THE CHAT, THE TRICK', W / 2, 80, 1, C('ui', 4), { center: true });
+      PD.textS(fb, 'AND THE ROOM ARRIVE IN MILESTONES 3-5.', W / 2, 88, 1, C('ui', 4), { center: true });
+      PD.textS(fb, '(HE IS VERY GAY. NOT FOR LONG.)', W / 2, 98, 1, C('cyan', 3), { center: true });
       if (UI.button(fb, 'sb', 70, 112, 84, 14, 'SANDBOX', { ramp: 'lime' })) SM.go('sandbox');
       if (UI.button(fb, 'bk', 166, 112, 84, 14, 'MAIN MENU', { ramp: 'neon' }) || UI.back) SM.go('menu');
     },

@@ -81,6 +81,7 @@
     if (kind === 'hover') tone(880, 990, 0.03, 'square', 0.04);
     else if (kind === 'nav') tone(660, 700, 0.04, 'square', 0.05);
     else if (kind === 'click') { tone(520, 1040, 0.06, 'square', 0.08); tone(1040, 1560, 0.06, 'square', 0.05, 0.05); }
+    else if (kind === 'type') tone(1400 + Math.random() * 300, 1200, 0.018, 'square', 0.025);
     else if (kind === 'slam') { burst(180, 0.7, 0.6, 0.25); thump(70, 0.6, 0.3); }
     else if (kind === 'zap') { tone(200, 2400, 0.35, 'sawtooth', 0.08); }
     else if (kind === 'start') { [523, 659, 784, 1046].forEach((f, i) => tone(f, f, 0.09, 'square', 0.07, i * 0.07)); }

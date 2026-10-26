@@ -45,6 +45,12 @@
         b[i] = v - Math.min(steps, sh - 1 > 0 ? sh - 1 : 0) - (sh - steps < 1 ? 0 : 0);
       }
     }
+    // copy a rectangle (same coordinates) from another framebuffer
+    blit(src, x, y, w, h) {
+      const x0 = Math.max(0, Math.round(x)), y0 = Math.max(0, Math.round(y));
+      const x1 = Math.min(W, Math.round(x + w)), y1 = Math.min(H, Math.round(y + h));
+      for (let j = y0; j < y1; j++) this.buf.set(src.buf.subarray(j * W + x0, j * W + x1), j * W + x0);
+    }
     line(x0, y0, x1, y1, c) {
       x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
       const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
@@ -273,6 +279,7 @@
     '/': ['..#', '..#', '.#.', '#..', '#..'], '$': ['.##', '##.', '.#.', '.##', '##.'],
     '(': ['.#', '#.', '#.', '#.', '.#'], ')': ['#.', '.#', '.#', '.#', '#.'], '&': ['.#.', '#.#', '.#.', '#.#', '.##'],
     '<': ['..#', '.#.', '#..', '.#.', '..#'], '>': ['#..', '.#.', '..#', '.#.', '#..'], '=': ['...', '###', '...', '###', '...'],
+    ';': ['.', '#', '.', '#', '#'], '*': ['...', '#.#', '.#.', '#.#', '...'], '@': ['.##.', '#..#', '#.##', '#...', '.##.'],
     '"': ['#.#', '#.#', '...', '...', '...'], '#': ['#.#', '###', '#.#', '###', '#.#'], '_': ['...', '...', '...', '...', '###'],
   });
   PD.GLYPHS = G;
