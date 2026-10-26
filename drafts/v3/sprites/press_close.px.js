@@ -131,43 +131,32 @@ function asshole(dst) {
 // ---------------------------------------------------------------- pussy -----
 // Seen from behind/above, the slit runs up the screen. Skin-coloured outer lips form an almond
 // around the shaft and melt into her inner cheeks; pink only on the inner surfaces.
-// Seen from behind/above the slit runs up the screen: an almond of puffy outer lips around
-// the shaft, thin wet inner lips hugging him, a hood on top, the back corner below.
+// Seen from behind/above, the slit runs up the screen. The original pussy, spread 3px wider
+// so it still wraps the thicker shaft (W = how much wider than the original).
 function pussy(dst, drag, shaftIn) {
-  const L = new Layer(), cx = 160, cy = 96; L.cz = 30; L.cr = 7
-  const open = shaftIn ? 11 : 2
-  // outer lips: plump, tapering to a point at the top and bottom (the almond)
-  for (const s of [-1, 1]) for (let y = cy - 16; y <= cy + 9; y++) {
-    const t = (y - (cy - 16)) / 25, w = Math.sin(Math.PI * Math.pow(t, 0.85)) * 7.2
-    if (w < 0.6) continue
-    const mid = cx + s * (open + w * 0.75)
-    for (let x = Math.floor(mid - w); x <= Math.ceil(mid + w); x++) {
-      const u = (x + 0.5 - mid) / w, v = (t - 0.5) * 2; if (Math.abs(u) > 1) continue
-      const lit = -u * 0.6 - v * 0.5 - (s > 0 ? 0.25 : 0)
-      const k = lit > 0.55 ? "i" : lit > 0.05 ? "h" : lit > -0.45 ? "g" : "f"
-      L.set(x, y, k, [u * 0.9, v * 0.6, Math.sqrt(Math.max(0.05, 1 - u * u * 0.8))])
-    }
-  }
-  orb(L, cx, cy + 6, open + 2, 4.5, ["f", "g", "g", null], (x, y) => y >= cy + 4)   // the back corner where they join
-  // inner lips: a ruffled wet pink rim between the outer lips and the shaft
-  for (let y = cy - 13 + drag; y <= cy + 4; y++) for (const s of [-1, 1]) {
-    const ruff = Math.round(Math.sin(y * 0.9 + s) * 0.7)
-    const e = open - 1 + ruff, nn = [-s * 0.55, 0, 0.83]
-    L.set(cx + s * e, y, "m", nn); L.set(cx + s * (e + 1), y, (y + s) % 4 ? "k" : "p", nn); L.set(cx + s * (e + 2), y, "j", nn)
-    if (drag > 2 && y < cy - 2) L.set(cx + s * (e - 1), y, "k", nn)                  // dragged up his shaft on the way out
+  const L = new Layer(), cx = 160, cy = 96, W = 3
+  // the almond: outer lips (labia majora), skin with a flush, parted around the shaft
+  for (const s of [-1, 1]) orb(L, cx + s * (9.5 + W), cy - 6, 6.5, 13.5, s < 0 ? ["f", "g", "h", "i"] : ["f", "g", "g", "h"])
+  orb(L, cx, cy + 3, 11 + W, 5, ["f", "g", "g", null], (x, y) => y >= cy + 1)             // the back corner where they join
+  // inner surfaces: wet pink between the lips and the shaft (labia minora stretched thin)
+  for (let y = cy - 17 + drag; y <= cy + 2; y++) for (const s of [-1, 1]) {
+    const edge = shaftIn ? 7 + W : 1
+    const nn = [-s * 0.6, 0, 0.8]
+    L.set(cx + s * edge, y, (y + s) % 3 ? "k" : "m", nn); L.set(cx + s * (edge + 1), y, "k", nn); L.set(cx + s * (edge + 2), y, "j", nn)
+    if (drag > 2 && y < cy - 3) L.set(cx + s * (edge - 1), y, "j", nn)
   }
   // hood at the top of the slit, just peeking past the shaft
-  orb(L, cx, cy - 16, 5, 3, ["g", "h", "i", null])
+  orb(L, cx, cy - 18, 4, 2.5, ["g", "h", "i", null])
   // the grip: the opening stretched round him, wet rim in front of the shaft
-  const ry = 2 + Math.round(drag / 2)
-  for (let x = -open; x <= open; x++) {
-    const t = 1 - (x / (open + 0.5)) ** 2; if (t < 0) continue
+  const ry = 2 + Math.round(drag / 2), gw = 8 + W
+  for (let x = -gw; x <= gw; x++) {
+    const t = 1 - (x / (gw + 0.5)) ** 2; if (t < 0) continue
     const yb = cy + Math.round(Math.sqrt(t) * ry)
-    for (let y = cy - Math.round(drag / 2); y <= yb; y++) L.set(cx + x, y, y === yb ? "j" : (x < -2 ? "m" : "k"), [x / 13, 0.5, 0.85])
+    for (let y = cy - Math.round(drag / 2); y <= yb; y++) L.set(cx + x, y, y === yb ? "j" : (x < -1 ? "m" : "k"), [x / (gw + 2), 0.5, 0.85])
   }
-  L.set(cx - 7, cy - Math.round(drag / 2), "p"); L.set(cx - 6, cy - Math.round(drag / 2), "p"); L.set(cx + 6, cy + 1, "p")
-  L.set(cx - 15, cy - 9, "i"); L.set(cx - 15, cy - 8, "i")
-  L.outline({ ...HER_D, f: "o", g: "o" }, (x, y) => y > cy + 10).over(dst)
+  L.set(cx - 5 - W, cy - Math.round(drag / 2), "p"); L.set(cx - 4 - W, cy - Math.round(drag / 2), "p"); L.set(cx + 4 + W, cy + 1, "p")
+  L.set(cx - 12 - W, cy - 12, "e")
+  L.outline({ ...HER_D, f: "o", g: "o" }, (x, y) => y > cy + 8).over(dst)
 }
 // ------------------------------------------------------------------ him ----
 const HIS = ["A", "B", "C", "D"], HIS_HI = ["A", "B", "C", "E"]
@@ -363,17 +352,20 @@ function hisDetails(F, B, sackTop, clench) {
   // Their outer edge hands over to the body's own shading so the hips flow into the legs.
   const gy = sackTop - 19, gx = 19 - clench * 1.5
   const se = (u, v, p) => Math.pow(Math.pow(Math.abs(u), p) + Math.pow(Math.abs(v), p), 1 / p)
+  const OV = []
   for (const s of [-1, 1]) {
     const cx = 160 + s * gx, rx = 24 - clench, ry = 22
     for (let y = Math.floor(gy - ry - 2); y <= gy + ry + 2; y++) for (let x = Math.floor(cx - rx - 2); x <= cx + rx + 2; x++) {
-      if ((s < 0 ? x > 160 : x < 160) || !isHim(B.get(x, y))) continue
       const u = (x + 0.5 - cx) / rx, v = (y + 0.5 - gy) / ry
+      // he's on top: the bottom of each glute hangs over her ass, not under it
+      const overHer = v > 0.2 && "abcdeo".includes(F.get(x, y))
+      if ((s < 0 ? x > 160 : x < 160) || !(isHim(B.get(x, y)) || overHer)) continue
       const inner = (u * s) < 0, p = v > 0 && inner ? 3.4 : v > 0 ? 2.9 : 2.4
       const m = se(u, v, p); if (m > 1) continue
       const i = y * 320 + x
       // normal: superellipse gradient, blended into the body's normal at the rim
       let nu = Math.sign(u) * Math.pow(Math.abs(u), p - 1), nv = Math.sign(v) * Math.pow(Math.abs(v), p - 1), nz = Math.sqrt(Math.max(0.06, 1 - Math.pow(m, p)))
-      const w = Math.min(1, Math.max(0, (1 - m) / 0.22))
+      const w = overHer ? 1 : Math.min(1, Math.max(0, (1 - m) / 0.22))
       const bn = [F.n[i * 3], F.n[i * 3 + 1], F.n[i * 3 + 2]]
       const n = [bn[0] + (nu - bn[0]) * w, bn[1] + (nv - bn[1]) * w, bn[2] + (nz - bn[2]) * w]
       let k = F.get(x, y)
@@ -383,10 +375,13 @@ function hisDetails(F, B, sackTop, clench) {
         if (Math.abs(x - 160) < 3) k = k === "D" ? "C" : "B"
         if (!clench && m > 0.66 && m < 0.78 && u * s < 0.1 && v < -0.35 && u < 0.2) k = "E"   // rim sheen, upper left
       }
+      if (overHer) { const d = se((x + 0.5 - (cx - rx * 0.3)) / rx, (y + 0.5 - (gy - ry * 0.32)) / ry, p); k = d < 0.96 ? "C" : d < 1.26 ? "B" : "A"; OV.push([x, y]) }
       if (k === "." || k === "O") continue
       F.set(x, y, k, n)
     }
   }
+  // outline where his glutes hang over her
+  for (const [x, y] of OV) for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0]]) { const k = F.get(x + dx, y + dy); if ("abcdeo".includes(k) && k !== ".") F.set(x + dx, y + dy, "O", [0, 0, 1], 1) }
   // the fold where each glute sits on the back of the thigh: soft shadow, darkest inside
   for (const s of [-1, 1]) for (let x = 2; x <= 21; x++) {
     const u = x / (24 - clench), y = Math.round(gy + 22 * Math.pow(Math.max(0, 1 - Math.pow(u, 3.4)), 1 / 3.4))
