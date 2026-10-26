@@ -1,0 +1,178 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bedroom</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{ --bg:#0d0a12; --panel:#1c1426; --ink:#f4e9f2; --accent:#ff5c8a; }
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.3 ui-monospace,Menlo,monospace}
+  #wrap{position:relative;width:min(100vw,177.7vh);margin:0 auto}
+  canvas{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges}
+  #hud{position:absolute;inset:0}
+  #bar{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:8px}
+  button,label{background:var(--panel);color:var(--ink);border:1px solid #3b2b4d;border-radius:4px;padding:5px 9px;font:inherit;cursor:pointer}
+  button.on{border-color:var(--accent);color:var(--accent)}
+  input[type=range]{vertical-align:middle}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="gl" width="320" height="180"></canvas><canvas id="hud" width="320" height="180"></canvas></div>
+<div id="bar">
+  <button id="bLight" class="on">Lighting: smooth</button>
+  <button id="bPal">Palette: color</button>
+  <button id="bLamp" class="on">Lamp: on (move mouse)</button>
+  <button id="bCam">Camera: close</button>
+  <label>Kinsey <input id="kin" type="range" min="0" max="6" value="3"> <span id="kv">3</span></label>
+</div>
+<script src="ui.js"></script>
+<script>
+'use strict';
+// ------------------------------------------------------------ palette ------
+// same hue-shifted ramps as sprites/palette.px.js, but 8 steps so light can sweep smoothly
+function hex(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+function rgb2hsl(r,g,b){ r/=255;g/=255;b/=255; const mx=Math.max(r,g,b), mn=Math.min(r,g,b); let h=0,s=0; const l=(mx+mn)/2;
+  if(mx!==mn){ const d=mx-mn; s=l>0.5?d/(2-mx-mn):d/(mx+mn); h= mx===r?(g-b)/d+(g<b?6:0): mx===g?(b-r)/d+2:(r-g)/d+4; h*=60; } return [h,s,l]; }
+function hsl2rgb(h,s,l){ h=((h%360)+360)%360/360; if(s===0) return [l*255,l*255,l*255].map(Math.round);
+  const q=l<0.5?l*(1+s):l+s-l*s, p=2*l-q; const f=t=>{ t=(t+1)%1; return t<1/6?p+(q-p)*6*t: t<1/2?q: t<2/3?p+(q-p)*(2/3-t)*6:p; };
+  return [f(h+1/3),f(h),f(h-1/3)].map(v=>Math.round(v*255)); }
+function toward(h,t,a){ const d=((t-h+540)%360)-180; return h+Math.sign(d)*Math.min(Math.abs(d),a); }
+function shadeRamp(base,n,o={}){ const [h,s0,l0]=rgb2hsl(...hex(base)); const shift=o.shift??24, spread=o.spread??0.56, sat=o.sat??1;
+  return Array.from({length:n},(_,i)=>{ const t=n===1?0:i/(n-1)-0.5; const l=Math.max(0.04,Math.min(0.97,l0+t*spread));
+    const hh=t<0?toward(h,250,shift*-t*2):toward(h,55,shift*t*2); const s=Math.max(0,Math.min(1,s0*sat*(t<0?1+0.15*-t*2:1-0.3*t*2)));
+    return hsl2rgb(hh,s,l); }); }
+// material: keys, base colour, ramp options, shininess, specular strength
+const MATS=[null,
+  {keys:'abcde', base:'#f0c3a4', o:{spread:0.72,shift:14,sat:0.62}, shin:28, spec:0.55},   // 1 her skin (oiled)
+  {keys:'fghi',  base:'#e8ab9f', o:{spread:0.74,shift:12,sat:0.75}, shin:30, spec:0.50},   // 2 outer lips
+  {keys:'jkmp',  base:'#d65a78', o:{spread:0.70,shift:10},          shin:60, spec:0.90},   // 3 wet pink
+  {keys:'uv',    base:'#b45a6c', o:{spread:0.50,shift:8},           shin:20, spec:0.30},   // 4 asshole
+  {keys:'ABCDE', base:'#bb855f', o:{spread:0.62,shift:14,sat:0.7}, shin:22, spec:0.35},   // 5 his skin
+  {keys:'WXYZ',  base:'#4a3328', o:{spread:0.50,shift:10},          shin:10, spec:0.10},   // 6 hair
+  {keys:'FGHIJK',base:'#a85d52', o:{spread:0.74,shift:10,sat:0.95}, shin:18, spec:0.35},   // 7 shaft / sack
+  {keys:'PQRS',  base:'#d9708a', o:{spread:0.70,shift:10},          shin:50, spec:0.80},   // 8 glans
+];
+const LINES={ z:'#1a0f1e', o:'#9a5446', O:'#5a3428', V:'#4a2222', x:'#6e2238', n:'#2a1820', l:'#2b1b2b', L:'#4a3047' };
+const RAMP_N=8;
+function buildLUTs(gray){
+  const lut=new Uint8Array(256*4), lineCol=new Uint8Array(256*4), ramp=new Uint8Array(RAMP_N*16*4);
+  MATS.forEach((m,mi)=>{ if(!m) return;
+    let r=shadeRamp(m.base,RAMP_N,m.o);
+    if(gray && mi!==2 && mi!==3 && mi!==4 && mi!==8) r=r.map(c=>{ const v=Math.round(0.3*c[0]+0.59*c[1]+0.11*c[2]); return [v,v,v]; });
+    r.forEach((c,i)=>ramp.set([...c,255],(mi*RAMP_N+i)*4));
+    [...m.keys].forEach((k,ti)=>lut.set([mi, Math.round(ti/(m.keys.length-1)*255), 0, 255], k.charCodeAt(0)*4)); });
+  for(const [k,h] of Object.entries(LINES)){ let c=hex(h); if(gray){ const v=Math.round(0.3*c[0]+0.59*c[1]+0.11*c[2]); c=[v,v,v]; }
+    lut.set([0,0,255,255],k.charCodeAt(0)*4); lineCol.set([...c,255],k.charCodeAt(0)*4); }
+  return {lut,lineCol,ramp};
+}
+
+// -------------------------------------------------------------- WebGL ------
+const cv=document.getElementById('gl'), gl=cv.getContext('webgl2',{antialias:false,premultipliedAlpha:false});
+const VS=`#version 300 es
+void main(){ vec2 p=vec2((gl_VertexID<<1)&2, gl_VertexID&2); gl_Position=vec4(p*2.-1.,0.,1.); }`;
+const FS=`#version 300 es
+precision highp float;
+uniform sampler2D uMat,uNrm,uRoom,uLut,uLine,uRamp;
+uniform int uFrame; uniform vec3 uLamp; uniform float uLampOn, uPixel, uTime;
+out vec4 o;
+const float RN=${RAMP_N}.;
+vec3 ramp(float mat, float t){ t=clamp(t,0.,1.)*(RN-1.); float i=floor(t), f=t-i;
+  vec3 a=texelFetch(uRamp, ivec2(int(mat)*${RAMP_N}+int(i),0),0).rgb, b=texelFetch(uRamp, ivec2(int(mat)*${RAMP_N}+int(min(i+1.,RN-1.)),0),0).rgb;
+  return mix(a,b,f); }
+float bayer(ivec2 p){ int x=p.x&3, y=p.y&3; int m[16]=int[16](0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5); return (float(m[y*4+x])+0.5)/16.; }
+void main(){
+  ivec2 p=ivec2(gl_FragCoord.xy); p.y=179-p.y;
+  vec3 room=texelFetch(uRoom,p,0).rgb;
+  vec3 lampC=vec3(1.0,0.72,0.45);
+  vec3 toLampR=uLamp-vec3(vec2(p),0.); float dR=length(toLampR.xy);
+  float glow=uLampOn*0.55/(1.+dR*dR/(110.*110.));
+  vec4 m=texelFetch(uMat, ivec2(uFrame*320+p.x, p.y),0);
+  if(m.a<0.5){ o=vec4(room*(0.62+glow*lampC*1.1),1.); return; }
+  int key=int(m.r*255.+0.5); float flag=m.g*255.;
+  vec4 lu=texelFetch(uLut, ivec2(key,0),0);
+  if(lu.b>0.5){ vec3 c=texelFetch(uLine, ivec2(key,0),0).rgb; o=vec4(c*(0.85+glow*lampC*0.6),1.); return; }
+  float mat=lu.r*255.; float tone=lu.g;
+  vec3 n=normalize(texelFetch(uNrm, ivec2(uFrame*320+p.x,p.y),0).rgb*2.-1.);
+  // lights in screen space (x right, y down, z toward the viewer)
+  vec3 L=normalize(vec3(-0.55,-0.62,0.58));
+  float key_=max(0.,(dot(n,L)+0.22)/1.22);
+  float fill=max(0.,dot(n,normalize(vec3(0.7,0.15,0.7))))*0.22;
+  float rim=pow(1.-max(n.z,0.),2.2)*max(0.,dot(normalize(n.xy+1e-4),normalize(vec2(0.75,-0.65))))*0.45;
+  vec3 toLamp=uLamp-vec3(vec2(p),0.); float dl=length(toLamp);
+  float lamp=uLampOn*max(0.,dot(n,normalize(toLamp)))*1.15/(1.+dl*dl/(95.*95.));
+  float lum=0.06+0.60*key_+fill*0.8+rim*0.8+lamp*0.75;
+  // hand-drawn creases keep their darkness (crack, seams, folds); highlights stay bright
+  if(flag>1.5){ lum*=mix(0.52,1.12,tone); }
+  float shin=mat==1.?28.:mat==2.?30.:mat==3.?60.:mat==5.?22.:mat==7.?18.:mat==8.?50.:12.;
+  float sstr=mat==1.?0.55:mat==2.?0.5:mat==3.?0.9:mat==5.?0.35:mat==7.?0.35:mat==8.?0.8:0.1;
+  float spec=pow(max(0.,dot(n,normalize(L+vec3(0,0,1)))),shin)*sstr + uLampOn*pow(max(0.,dot(n,normalize(normalize(toLamp)+vec3(0,0,1)))),shin)*sstr*0.8/(1.+dl*dl/(95.*95.));
+  float t=lum*0.80;
+  if(uPixel>0.5){ float s=t*5.; float fr=fract(s); float b=bayer(p); s=floor(s)+(fr>0.78&&b<(fr-0.78)/0.22?1.:0.); t=s/5.; spec=spec>0.45?1.:0.; }
+  vec3 c=ramp(mat,t);
+  c+= spec*vec3(1.,0.97,0.92)*(uPixel>0.5?0.5:0.6);
+  c*= mix(vec3(1.),vec3(1.08,0.98,0.9),uLampOn*min(1.,lamp));
+  o=vec4(c,1.);
+}`;
+function sh(t,s){ const x=gl.createShader(t); gl.shaderSource(x,s); gl.compileShader(x); if(!gl.getShaderParameter(x,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; }
+const prog=gl.createProgram(); gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS)); gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+function tex(unit, w, h, data){ const t=gl.createTexture(); gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  if(data instanceof HTMLImageElement) gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,data);
+  else gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,data); return t; }
+const U=n=>gl.getUniformLocation(prog,n);
+function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+
+// -------------------------------------------------------------- state ------
+const S={ pixel:false, gray:false, lamp:true, kinsey:3, lampPos:[230,40,46], mouse:null, cam:'close' };
+let META, rooms={};
+function setLUTs(){ const L=buildLUTs(S.gray); tex(3,256,1,L.lut); tex(4,256,1,L.lineCol); tex(5,RAMP_N*16,1,L.ramp); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, S.gray?rooms.gray:rooms.color); }
+async function boot(){
+  const [mat,nrm,rc,rg,meta]=await Promise.all([loadImg('game/sprites/press_close.mat.png'),loadImg('game/sprites/press_close.nrm.png'),
+    loadImg('game/sprites/room_color.png'),loadImg('game/sprites/room_gray.png'),fetch('game/sprites/press_close.json').then(r=>r.json()).catch(()=>null)]);
+  META=meta||{frames:[120,50,40,70,60,60,70,80].map(ms=>({ms}))};
+  tex(0,0,0,mat); tex(1,0,0,nrm); rooms.color=tex(2,0,0,rc); rooms.gray=tex(2,0,0,rg);
+  setLUTs();
+  gl.uniform1i(U('uMat'),0); gl.uniform1i(U('uNrm'),1); gl.uniform1i(U('uRoom'),2); gl.uniform1i(U('uLut'),3); gl.uniform1i(U('uLine'),4); gl.uniform1i(U('uRamp'),5);
+  requestAnimationFrame(loop);
+}
+// -------------------------------------------------------------- loop -------
+const hud=document.getElementById('hud'), hctx=hud.getContext('2d'), hbuf=new Uint8ClampedArray(320*180*4);
+const C={ink:[26,15,30],paper:[255,246,234],uiD:[43,27,51],uiM:[91,68,112],heart:[255,92,138],blush:[255,125,154],brow:[58,39,33]};
+let t0=performance.now(), score=0, combo=0;
+function frameAt(t){ const speed=1.6-(S.kinsey/6)*0.85, F=META.frames, total=F.reduce((a,f)=>a+f.ms,0)/speed; let x=(t%total), i=0; while(i<F.length-1 && x>=F[i].ms/speed){ x-=F[i].ms/speed; i++; } return {i, total, speed}; }
+function loop(now){
+  const t=now-t0, {i,total}=frameAt(t);
+  // the lamp: a candle that wanders on its own, or follows the mouse
+  const flick=0.92+0.08*Math.sin(now*0.023)+0.05*Math.sin(now*0.071);
+  const lp=S.mouse||[230+Math.sin(now*0.0004)*30, 40+Math.cos(now*0.0005)*10];
+  gl.uniform1i(U('uFrame'),i); gl.uniform3f(U('uLamp'),lp[0],lp[1],46); gl.uniform1f(U('uLampOn'),S.lamp?flick:0); gl.uniform1f(U('uPixel'),S.pixel?1:0); gl.uniform1f(U('uTime'),now/1000);
+  gl.viewport(0,0,320,180); gl.drawArrays(gl.TRIANGLES,0,3);
+  // HUD
+  hbuf.fill(0); const c=new Canvas2(hbuf,320,180);
+  const phaseToHit=((t%total)/total);
+  const hitAt=(META.frames.slice(0,3).reduce((a,f)=>a+f.ms,0))/(META.frames.reduce((a,f)=>a+f.ms,0));
+  let d=hitAt-phaseToHit; if(d<0) d+=1;
+  UI.rhythm(c,160,96,d<0.7?d/0.7:0,C,(d>0.93||d<0.03)?'PERFECT!':null);
+  if(i===3||i===4) c.textOutlined('PLAP!',186,70,C.paper,C.ink);
+  UI.hud(c,{score:Math.floor(t/40),hearts:3,combo:[Math.floor(t/400)%2000,Math.floor(t/1000)%99],kinsey:S.kinsey,toolHot:-1},C);
+  const lines=UI.LINES[S.kinsey]||UI.LINES[3]; UI.speech(c,6,150,lines[Math.floor(t/3500)%lines.length],C);
+  hctx.putImageData(new ImageData(hbuf,320,180),0,0);
+  requestAnimationFrame(loop);
+}
+// ------------------------------------------------------------ controls -----
+const $=id=>document.getElementById(id);
+$('bLight').onclick=()=>{ S.pixel=!S.pixel; $('bLight').textContent='Lighting: '+(S.pixel?'pixel bands':'smooth'); };
+$('bPal').onclick=()=>{ S.gray=!S.gray; $('bPal').textContent='Palette: '+(S.gray?'grayscale':'color'); setLUTs(); };
+$('bLamp').onclick=()=>{ S.lamp=!S.lamp; $('bLamp').classList.toggle('on',S.lamp); $('bLamp').textContent='Lamp: '+(S.lamp?'on (move mouse)':'off'); };
+$('bCam').onclick=()=>{ $('bCam').textContent='Camera: close (wide set in progress)'; };
+$('kin').oninput=e=>{ S.kinsey=+e.target.value; $('kv').textContent=S.kinsey; };
+$('hud').onmousemove=e=>{ const r=e.target.getBoundingClientRect(); S.mouse=[(e.clientX-r.left)/r.width*320,(e.clientY-r.top)/r.height*180]; };
+$('hud').onmouseleave=()=>{ S.mouse=null; };
+window.__S=S;
+boot();
+</script>
+</body>
+</html>

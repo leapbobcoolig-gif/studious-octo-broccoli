@@ -9,7 +9,7 @@ function hexc(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),pa
 class Canvas2 {
   constructor(buf,w,h){ this.b=buf; this.w=w; this.h=h; }
   px(x,y,c,a=1){ x|=0; y|=0; if(x<0||y<0||x>=this.w||y>=this.h) return; const i=(y*this.w+x)*4, b=this.b;
-    if(a>=1){ b[i]=c[0]; b[i+1]=c[1]; b[i+2]=c[2]; } else { b[i]+= (c[0]-b[i])*a; b[i+1]+=(c[1]-b[i+1])*a; b[i+2]+=(c[2]-b[i+2])*a; } }
+    if(a>=1){ b[i]=c[0]; b[i+1]=c[1]; b[i+2]=c[2]; b[i+3]=255; } else { b[i]+= (c[0]-b[i])*a; b[i+1]+=(c[1]-b[i+1])*a; b[i+2]+=(c[2]-b[i+2])*a; } }
   get(x,y){ const i=(y*this.w+x)*4; return [this.b[i],this.b[i+1],this.b[i+2]]; }
   rect(x,y,w,h,c,a=1){ for(let j=y;j<y+h;j++) for(let i=x;i<x+w;i++) this.px(i,j,c,a); }
   box(x,y,w,h,c){ for(let i=x;i<x+w;i++){ this.px(i,y,c); this.px(i,y+h-1,c); } for(let j=y;j<y+h;j++){ this.px(x,j,c); this.px(x+w-1,j,c); } }

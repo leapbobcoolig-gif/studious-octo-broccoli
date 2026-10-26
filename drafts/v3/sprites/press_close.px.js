@@ -7,10 +7,17 @@ include("cbase.px.js")
 // Each body part is drawn on its own layer, outlined there (sel-out style), then
 // composited in depth order. Light comes from the upper left everywhere.
 class Layer {
-  constructor(w = 320, h = 180) { this.w = w; this.h = h; this.k = new Array(w * h).fill(".") }
+  constructor(w = 320, h = 180) { this.w = w; this.h = h; this.k = new Array(w * h).fill("."); this.n = new Float32Array(w * h * 3); this.fl = new Uint8Array(w * h) }
   in(x, y) { return x >= 0 && y >= 0 && x < this.w && y < this.h }
   get(x, y) { return this.in(x, y) ? this.k[y * this.w + x] : "." }
-  set(x, y, k) { x = Math.round(x); y = Math.round(y); if (this.in(x, y)) this.k[y * this.w + x] = k }
+  // n = surface normal [x, y(down), z(toward viewer)] for lit pixels; without one, a pixel that already
+  // exists becomes a hand-drawn crease/detail (keeps the surface normal, flag 2); fl 1 = outline
+  set(x, y, k, n, flag) { x = Math.round(x); y = Math.round(y); if (!this.in(x, y)) return; const i = y * this.w + x
+    if (n) { const l = Math.hypot(n[0], n[1], n[2]) || 1; this.n[i * 3] = n[0] / l; this.n[i * 3 + 1] = n[1] / l; this.n[i * 3 + 2] = n[2] / l; this.fl[i] = flag || 0 }
+    else if (flag !== undefined) this.fl[i] = flag
+    else if (this.k[i] !== ".") this.fl[i] = this.fl[i] === 1 ? 1 : 2
+    else { this.n[i * 3 + 2] = 1; this.fl[i] = 2 }
+    this.k[i] = k }
   opaque(x, y) { return this.get(x, y) !== "." }
   each(fn) { for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) if (this.opaque(x, y)) fn(x, y, this.get(x, y)) }
   // outline transparent pixels touching the shape; key picked from what it borders
@@ -23,7 +30,7 @@ class Layer {
         pts.push([x, y, dark[n] || dark._]); break
       }
     }
-    for (const [x, y, k] of pts) this.set(x, y, k)
+    for (const [x, y, k] of pts) this.set(x, y, k, [0, 0, 1], 1)
     return this
   }
   // drop 1px L-corners in outlines so curves step cleanly
@@ -38,7 +45,7 @@ class Layer {
     }
     return this
   }
-  over(dst) { dst.each === undefined; for (let i = 0; i < this.k.length; i++) if (this.k[i] !== ".") dst.k[i] = this.k[i]; return dst }
+  over(dst) { for (let i = 0; i < this.k.length; i++) if (this.k[i] !== ".") { dst.k[i] = this.k[i]; dst.fl[i] = this.fl[i]; dst.n[i * 3] = this.n[i * 3]; dst.n[i * 3 + 1] = this.n[i * 3 + 1]; dst.n[i * 3 + 2] = this.n[i * 3 + 2] } return dst }
 }
 const inEll = (x, y, cx, cy, rx, ry) => ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 1
 
@@ -51,7 +58,8 @@ function orb(L, cx, cy, rx, ry, keys, clip) {
     if (!inEll(x, y, cx - rx * 0.10, cy - ry * 0.12, rx * 0.93, ry * 0.92)) k = rim
     if (inEll(x, y, cx - rx * 0.24, cy - ry * 0.26, rx * 0.64, ry * 0.62)) k = lit
     if (hi && inEll(x, y, cx - rx * 0.40, cy - ry * 0.44, Math.max(1.2, rx * 0.16), Math.max(1, ry * 0.11))) k = hi
-    L.set(x, y, k)
+    const u = (x + 0.5 - cx) / rx, v = (y + 0.5 - cy) / ry
+    L.set(x, y, k, [u, v, Math.sqrt(Math.max(0.04, 1 - u * u - v * v))])
   }
 }
 // tapered limb from (x0,y0,r0) to (x1,y1,r1): lit side faces up-left, shadow side down-right
@@ -71,7 +79,8 @@ function limb(L, x0, y0, r0, x1, y1, r1, keys, clip) {
       if (u > 0.05) k = lit
       if (u < -0.55) k = rim
       if (hi && u > 0.42 && u < 0.62 && ((x * 7 + y * 3) % 11) < 6) k = hi
-      L.set(x, y, k)
+      const a = (ox * nx + oy * ny) / r
+      L.set(x, y, k, [nx * a, ny * a, Math.sqrt(Math.max(0.04, 1 - a * a))])
     }
 }
 const HER_D = { a: "o", b: "o", c: "a", d: "b", e: "c", n: "o", f: "x", g: "f", h: "f", i: "g", j: "x", k: "x", m: "j", p: "k", u: "x", v: "u", l: "z", L: "l", _: "o" }
@@ -108,7 +117,8 @@ function herAss(dst, jig) {
       let k = d < 0.66 ? "d" : d < 1.02 ? "c" : d < 1.30 ? "b" : "a"
       if (Math.abs(x - 160) < 4 && y > cy - ry * 0.4) k = k === "d" ? "c" : "b"         // falls into the crack
       { const a = Math.atan2((y + 0.5 - cy) / ry, (x + 0.5 - cx) / wid), rr = Math.hypot((x + 0.5 - cx) / wid, (y + 0.5 - cy) / ry); if (rr > 0.66 && rr < 0.78 && a > -2.5 + (s > 0 ? 0.3 : 0) && a < -1.75) k = "e" }   // oily sheen arc
-      L.set(x, y, k)
+      const nu = (x + 0.5 - cx) / wid, nv = v
+      L.set(x, y, k, [nu * 1.1, nv * 1.1, Math.sqrt(Math.max(0.05, 1 - nu * nu - nv * nv))])
     }
   }
   for (let y = 102; y <= 142; y++) { if (!L.opaque(159, y + 2) || !L.opaque(161, y + 2)) break; L.set(160, y, "a"); if (y > 108) { L.set(159, y, "b"); L.set(161, y, "b") } }
@@ -129,8 +139,9 @@ function pussy(dst, drag, shaftIn) {
   // inner surfaces: wet pink between the lips and the shaft (labia minora stretched thin)
   for (let y = cy - 17 + drag; y <= cy + 2; y++) for (const s of [-1, 1]) {
     const edge = shaftIn ? 7 : 1
-    L.set(cx + s * edge, y, (y + s) % 3 ? "k" : "m"); L.set(cx + s * (edge + 1), y, "k"); L.set(cx + s * (edge + 2), y, "j")
-    if (drag > 2 && y < cy - 3) L.set(cx + s * (edge - 1), y, "j")
+    const nn = [-s * 0.6, 0, 0.8]
+    L.set(cx + s * edge, y, (y + s) % 3 ? "k" : "m", nn); L.set(cx + s * (edge + 1), y, "k", nn); L.set(cx + s * (edge + 2), y, "j", nn)
+    if (drag > 2 && y < cy - 3) L.set(cx + s * (edge - 1), y, "j", nn)
   }
   // hood at the top of the slit, just peeking past the shaft
   orb(L, cx, cy - 18, 4, 2.5, ["g", "h", "i", null])
@@ -139,7 +150,7 @@ function pussy(dst, drag, shaftIn) {
   for (let x = -8; x <= 8; x++) {
     const t = 1 - (x / 8.5) ** 2; if (t < 0) continue
     const yb = cy + Math.round(Math.sqrt(t) * ry)
-    for (let y = cy - Math.round(drag / 2); y <= yb; y++) L.set(cx + x, y, y === yb ? "j" : (x < -1 ? "m" : "k"))
+    for (let y = cy - Math.round(drag / 2); y <= yb; y++) L.set(cx + x, y, y === yb ? "j" : (x < -1 ? "m" : "k"), [x / 10, 0.5, 0.85])
   }
   L.set(cx - 5, cy - Math.round(drag / 2), "p"); L.set(cx - 4, cy - Math.round(drag / 2), "p"); L.set(cx + 4, cy + 1, "p")
   L.set(cx - 12, cy - 12, "e")
@@ -187,7 +198,7 @@ function shaft(dst, top, bot) {
   const prof = "GHHIIIIHHHGGFF"                      // 14px cylinder, lit from the left
   for (let y = top; y <= bot; y++) {
     const flare = y < top + 3 ? 1 : 0                // a slight flare at the base under the sack
-    for (let i = -flare; i < prof.length + flare; i++) L.set(153 + i, y, prof[Math.max(0, Math.min(13, i))])
+    for (let i = -flare; i < prof.length + flare; i++) { const u = (153 + i + 0.5 - 160) / (7 + flare); L.set(153 + i, y, prof[Math.max(0, Math.min(13, i))], [u, 0, Math.sqrt(Math.max(0.05, 1 - u * u))]) }
     L.set(161, y, "G")                               // groove beside the underside ridge
     const v = 157 + Math.round(Math.sin(y * 0.5) * 1.4)
     if (y % 6 !== 5) L.set(v, y, "H")                // a vein on the lit side
@@ -202,7 +213,7 @@ function sack(dst, cx, cy, mode) {
   const p = mode === "slap" ? { r: 11.5, ry: 9, gap: 10.5, nw: 7, drop: 1 } : mode === "mid" ? { r: 10.5, ry: 11.5, gap: 9.5, nw: 6, drop: 2 } : { r: 10, ry: 12.5, gap: 9, nw: 5, drop: 3 }
   const top = cy - p.ry - 8
   // neck: loose skin rising into the taint, widening as it fills with the two balls
-  for (let y = top; y < cy; y++) { const w = p.nw + (y - top) * 0.55; for (let x = Math.floor(cx - w); x <= cx + w; x++) L.set(x, y, x < cx - 2 ? "H" : "G") }
+  for (let y = top; y < cy; y++) { const w = p.nw + (y - top) * 0.55; for (let x = Math.floor(cx - w); x <= cx + w; x++) { const u = (x + 0.5 - cx) / (w + 1); L.set(x, y, x < cx - 2 ? "H" : "G", [u, -0.2, Math.sqrt(Math.max(0.05, 1 - u * u))]) } }
   // two balls side by side (the "3" seen sideways): each its own round form, left one hangs lower
   const balls = [[cx - p.gap, cy + p.drop], [cx + p.gap, cy]]
   for (const [bx, by] of balls) orb(L, bx, by, p.r, p.ry, ["F", "G", "H", "I"])
@@ -257,11 +268,27 @@ function reshade(base, out, keys, ramp, hi) {
       for (let yy = -2; yy <= 2; yy++) for (let xx = -2; xx <= 2; xx++) { const X = x + xx, Y = y + yy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const j = Y * W + X; if (id[j] === id[i]) { s += T[j]; n++ } }
       T2[i] = s / n }
     T.set(T2) }
+  // inflated surface: height grows with distance from the region edge -> rounded normals
+  const D = new Float32Array(W * H).fill(0)
+  for (let i = 0; i < W * H; i++) D[i] = id[i] >= 0 ? 1e4 : 0
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (id[i] < 0) continue
+      for (const [dx, dy, w] of [[-1, 0, 1], [0, -1, 1], [-1, -1, 1.41], [1, -1, 1.41]]) { const X = x + dx, Y = y + dy; const d = (X < 0 || Y < 0 || X >= W) ? 0 : (id[Y * W + X] === id[i] ? D[Y * W + X] : 0); D[i] = Math.min(D[i], d + w) } }
+    for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) { const i = y * W + x; if (id[i] < 0) continue
+      for (const [dx, dy, w] of [[1, 0, 1], [0, 1, 1], [1, 1, 1.41], [-1, 1, 1.41]]) { const X = x + dx, Y = y + dy; const d = (X >= W || Y >= H || X < 0) ? 0 : (id[Y * W + X] === id[i] ? D[Y * W + X] : 0); D[i] = Math.min(D[i], d + w) } } }
+  const Hh = (x, y, i) => { const j = y * W + x; return (x < 0 || y < 0 || x >= W || y >= H || id[j] !== id[i]) ? 0 : Math.sqrt(Math.min(D[j], 18)) * 2.2 }
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (T[i] < 0) continue
     const t = T[i]
     let k = t < 0.22 ? ramp[3] : t < 0.46 ? ramp[2] : t < 0.70 ? ramp[1] : ramp[0]
     if (hi && t < 0.10 && TH[i] > 12) k = hi
-    out.set(x, y, k) }
+    const gx = (Hh(x + 1, y, i) - Hh(x - 1, y, i)) / 2, gy = (Hh(x, y + 1, i) - Hh(x, y - 1, i)) / 2
+    out.set(x, y, k, [-gx, -gy, 1.4]) }
+  // smooth the normals inside each region (the distance field is faceted)
+  for (let pass = 0; pass < 3; pass++) { const n2 = out.n.slice()
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (id[i] < 0) continue; let sx = 0, sy = 0, sz = 0
+      for (let yy = -2; yy <= 2; yy++) for (let xx = -2; xx <= 2; xx++) { const X = x + xx, Y = y + yy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const j = Y * W + X; if (id[j] !== id[i]) continue; sx += out.n[j * 3]; sy += out.n[j * 3 + 1]; sz += out.n[j * 3 + 2] }
+      const l = Math.hypot(sx, sy, sz) || 1; n2[i * 3] = sx / l; n2[i * 3 + 1] = sy / l; n2[i * 3 + 2] = sz / l }
+    out.n.set(n2) }
 }
 // ------------------------------------------------------------------ frames -
 // per keyframe from the 3D reference: his hip drop (dy), sack centre, out (pull-back), her ripple
@@ -285,7 +312,7 @@ function drawFrame(r, c, f) {
   F.each((x, y, k) => { if (B.get(x, y) === "n" || (y < 72 && "abcd".includes(k) && Math.abs(x - 160) > 22 && ((x + y) % 4 === 0 || (x - y + 400) % 4 === 0))) F.set(x, y, k === "d" || k === "c" ? "n" : "o") })
   // her ass: fuller and rounder than the model, drawn over its own region
   const A = new Layer(); herAss(A, r.jig)
-  A.each((x, y, k) => { if (B.get(x, y) !== "." && "ABCDEOWXYZ".includes(B.get(x, y))) return; F.set(x, y, k) })
+  A.each((x, y, k) => { if (B.get(x, y) !== "." && "ABCDEOWXYZ".includes(B.get(x, y))) return; const i = y * 320 + x; F.set(x, y, k, [A.n[i * 3], A.n[i * 3 + 1], A.n[i * 3 + 2]], A.fl[i]) })
   asshole(F)
   const drag = Math.round(r.out * 6)
   pussy(F, drag, true)
@@ -316,7 +343,8 @@ function hisDetails(F, B, sackTop, clench) {
       let k = d < 0.62 ? "D" : d < 0.98 ? "C" : d < 1.28 ? "B" : "A"
       if (Math.abs(x - 160) < 3) k = k === "D" ? "C" : "B"
       { const a = Math.atan2(y + 0.5 - gy, x + 0.5 - cx), rr = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - gy) / ry); if (!clench && rr > 0.70 && rr < 0.84 && a > -2.6 && a < -1.9) k = "E" }   // thin rim sheen, upper left
-      G.set(x, y, k)
+      const nu = (x + 0.5 - cx) / rx, nv = (y + 0.5 - gy) / ry
+      G.set(x, y, k, [nu, nv, Math.sqrt(Math.max(0.05, 1 - nu * nu - nv * nv))])
     }
   }
   // lower edge of each glute: a fold line where it meets the back of the thigh
@@ -326,7 +354,7 @@ function hisDetails(F, B, sackTop, clench) {
   // crack, straight down into the taint
   for (let y = gy - 17; y <= sackTop - 3; y++) { F.set(160, y, "A"); if (y > gy - 12) F.set(161, y, "B") }
   // taint: a short smooth bridge of skin between the glutes and the sack, seam running through
-  for (let y = sackTop - 5; y <= sackTop + 2; y++) for (let x = 153; x <= 167; x++) { const w = 4 + (y - sackTop + 5) * 0.6; if (Math.abs(x - 160) > w) continue; F.set(x, y, x < 157 ? "C" : x > 163 ? "A" : "B") }
+  for (let y = sackTop - 5; y <= sackTop + 2; y++) for (let x = 153; x <= 167; x++) { const w = 4 + (y - sackTop + 5) * 0.6; if (Math.abs(x - 160) > w) continue; const u = (x - 160) / (w + 1); F.set(x, y, x < 157 ? "C" : x > 163 ? "A" : "B", [u, 0.2, Math.sqrt(Math.max(0.05, 1 - u * u))]) }
   for (let y = sackTop - 5; y <= sackTop + 2; y++) F.set(160, y, "A")
   for (let x = -5; x <= 5; x++) if (Math.abs(x) > 2) F.set(160 + x, sackTop - 5 + Math.round(Math.abs(x) * 0.3), "O")
 }
