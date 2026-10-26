@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Bedroom</title>
+<title>Straight Up Bedroom</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root{ --bg:#0d0a12; --panel:#1c1426; --ink:#f4e9f2; --accent:#ff5c8a; }
@@ -14,18 +14,38 @@
   button,label{background:var(--panel);color:var(--ink);border:1px solid #3b2b4d;border-radius:4px;padding:5px 9px;font:inherit;cursor:pointer}
   button.on{border-color:var(--accent);color:var(--accent)}
   input[type=range]{vertical-align:middle}
+  #wrap{touch-action:manipulation;user-select:none;-webkit-user-select:none}
+  #modal{position:fixed;inset:0;background:rgba(8,5,12,.82);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto;z-index:5}
+  #modal[hidden]{display:none}
+  #sheet{background:#1c1426;border:2px solid #3b2b4d;border-radius:6px;max-width:640px;width:100%;padding:14px 16px;box-sizing:border-box}
+  #sheet h2{margin:0 0 4px;font-size:16px;color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+  #sheet .sub{color:#a691b0;margin:0 0 10px}
+  #sheet .row{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:7px 0;border-top:1px solid #2e2240}
+  #sheet .row b{color:#fff}
+  #sheet .row small{color:#a691b0;display:block}
+  #sheet .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+  #sheet .al{background:#251b33;border:1px solid #3b2b4d;border-radius:4px;padding:6px;display:flex;gap:6px;min-width:0}
+  #sheet .al canvas{width:51px;height:60px;image-rendering:pixelated;flex:none}
+  #sheet .al div{min-width:0;font-size:11px;line-height:1.35}
+  #sheet .gold{color:#ffce5c} #sheet .ok{color:#78dc8c} #sheet .dim{color:#6f5c80}
+  #sheet .close{float:right}
+  #sheet button[disabled]{opacity:.45;cursor:default}
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="gl" width="320" height="180"></canvas><canvas id="hud" width="320" height="180"></canvas></div>
 <div id="bar">
-  <button id="bLight" class="on">Lighting: smooth</button>
-  <button id="bPal">Palette: color</button>
-  <button id="bLamp" class="on">Lamp: on (move mouse)</button>
-  <button id="bCam">Camera: close</button>
-  <label>Kinsey <input id="kin" type="range" min="0" max="6" value="3"> <span id="kv">3</span></label>
+  <button data-panel="shop">Shop</button>
+  <button data-panel="lounge">Bro Lounge</button>
+  <button data-panel="city">City &amp; Rebirth</button>
+  <button data-panel="trophies">Trophies</button>
+  <button data-panel="stats">Stats</button>
+  <button data-panel="settings">Settings</button>
 </div>
+<p style="text-align:center;color:#a691b0;margin:2px 12px 12px">Tap the screen (or space) when he bottoms out. Tools on the right: lube (L), broom (B), water (W), hold to edge (E), new lover.</p>
+<div id="modal" hidden><div id="sheet"></div></div>
 <script src="ui.js"></script>
+<script src="game.js"></script>
 <script>
 'use strict';
 // ------------------------------------------------------------ palette ------
@@ -55,9 +75,12 @@ const MATS=[null,
 const LINES={ z:'#1a0f1e', o:'#9a5446', O:'#5a3428', V:'#4a2222', x:'#6e2238', n:'#2a1820', l:'#2b1b2b', L:'#4a3047' };
 const RAMP_N=8;
 function buildLUTs(gray){
+  const g=GAME.guy(), hue=(GAME.shinyOn()||GAME.rainbowOn())?(performance.now()/8)%360:0;
   const lut=new Uint8Array(256*4), lineCol=new Uint8Array(256*4), ramp=new Uint8Array(RAMP_N*16*4);
   MATS.forEach((m,mi)=>{ if(!m) return;
-    let r=shadeRamp(m.base,RAMP_N,m.o);
+    let base=m.base; if(g&&mi===5) base=g.tone[0]; if(g&&mi===7) base=g.tone[1];
+    if(hue&&(mi===5||(GAME.rainbowOn()&&mi===1))){ const [h,s2,l]=rgb2hsl(...hex(base)); const c=hsl2rgb(h+hue,Math.max(s2,0.55),l); base='#'+c.map(v=>v.toString(16).padStart(2,'0')).join(''); }
+    let r=shadeRamp(base,RAMP_N,m.o);
     if(gray && mi!==2 && mi!==3 && mi!==4 && mi!==8) r=r.map(c=>{ const v=Math.round(0.3*c[0]+0.59*c[1]+0.11*c[2]); return [v,v,v]; });
     r.forEach((c,i)=>ramp.set([...c,255],(mi*RAMP_N+i)*4));
     [...m.keys].forEach((k,ti)=>lut.set([mi, Math.round(ti/(m.keys.length-1)*255), 0, 255], k.charCodeAt(0)*4)); });
@@ -73,7 +96,7 @@ void main(){ vec2 p=vec2((gl_VertexID<<1)&2, gl_VertexID&2); gl_Position=vec4(p*
 const FS=`#version 300 es
 precision highp float;
 uniform sampler2D uMat,uNrm,uRoom,uLut,uLine,uRamp;
-uniform int uFrame; uniform vec3 uLamp; uniform float uLampOn, uPixel, uTime;
+uniform int uFrame; uniform vec3 uLamp; uniform float uLampOn, uPixel, uTime, uSheen;
 uniform vec4 uCheek[2];   // offset xy, squash
 uniform vec4 uBall[2];    // centre xy, offset xy
 uniform vec4 uSack;       // top y, squash L, squash R
@@ -142,6 +165,7 @@ void main(){
   if(flag>1.5){ lum*=mix(0.52,1.12,tone); }
   float shin=mat==1.?28.:mat==2.?30.:mat==3.?60.:mat==5.?22.:mat==7.?18.:mat==8.?50.:12.;
   float sstr=mat==1.?0.55:mat==2.?0.5:mat==3.?0.9:mat==5.?0.35:mat==7.?0.35:mat==8.?0.8:0.1;
+  if(mat==5.) sstr*=uSheen;
   float spec=pow(max(0.,dot(n,normalize(L+vec3(0,0,1)))),shin)*sstr + uLampOn*pow(max(0.,dot(n,normalize(normalize(toLamp)+vec3(0,0,1)))),shin)*sstr*0.8/(1.+dl*dl/(95.*95.));
   float t=lum*0.86;
   if(uPixel>0.5){ float s=t*5.; float fr=fract(s); float b=bayer(p); s=floor(s)+(fr>0.78&&b<(fr-0.78)/0.22?1.:0.); t=s/5.; spec=spec>0.45?1.:0.; }
@@ -167,7 +191,7 @@ async function loadImg(src){ const blob=await (await fetch(src)).blob();
   catch(e){ return await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=URL.createObjectURL(blob); }); } }
 
 // -------------------------------------------------------------- state ------
-const S={ pixel:false, gray:false, lamp:true, kinsey:3, lampPos:[230,40,46], mouse:null, cam:'close' };
+const S=GAME.S.settings; let MOUSE=null;
 let META, rooms={};
 function setLUTs(){ const L=buildLUTs(S.gray); tex(3,256,1,L.lut); tex(4,256,1,L.lineCol); tex(5,RAMP_N*16,1,L.ramp); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, S.gray?rooms.gray:rooms.color); }
 async function boot(){
@@ -175,6 +199,7 @@ async function boot(){
     loadImg('game/sprites/room_color.png'),loadImg('game/sprites/room_gray.png'),fetch('game/sprites/press_close.json').then(r=>r.json()).catch(()=>null)]);
   META=meta||{frames:[120,50,40,70,60,60,70,80].map(ms=>({ms}))};
   tex(0,0,0,mat); tex(1,0,0,nrm); rooms.color=tex(2,0,0,rc); rooms.gray=tex(2,0,0,rg);
+  GAME.init(META,{ onGuy:()=>setLUTs(), openPanel:(n)=>openPanel(n) });
   setLUTs();
   gl.uniform1i(U('uMat'),0); gl.uniform1i(U('uNrm'),1); gl.uniform1i(U('uRoom'),2); gl.uniform1i(U('uLut'),3); gl.uniform1i(U('uLine'),4); gl.uniform1i(U('uRamp'),5);
   requestAnimationFrame(loop);
@@ -182,8 +207,7 @@ async function boot(){
 // -------------------------------------------------------------- loop -------
 const hud=document.getElementById('hud'), hctx=hud.getContext('2d'), hbuf=new Uint8ClampedArray(320*180*4);
 const C={ink:[26,15,30],paper:[255,246,234],uiD:[43,27,51],uiM:[91,68,112],heart:[255,92,138],blush:[255,125,154],brow:[58,39,33]};
-let t0=performance.now(), score=0, combo=0;
-function frameAt(t){ const speed=1.6-(S.kinsey/6)*0.85, F=META.frames, total=F.reduce((a,f)=>a+f.ms,0)/speed; let x=(t%total), i=0; while(i<F.length-1 && x>=F[i].ms/speed){ x-=F[i].ms/speed; i++; } return {i, total, speed}; }
+
 // ------------------------------------------------------------- physics -----
 // 2D springs in screen pixels. The slam (frame 3) kicks her cheeks, legs and his balls;
 // the balls also lag behind every jump of the sprite's own sack position, then swing back.
@@ -197,7 +221,7 @@ function slam(power){
 }
 function physics(dt,f){
   const fr=META.frames[f];
-  if(f!==PH.prevFrame){ if(f===3) slam(0.8+(6-S.kinsey)*0.08); PH.prevFrame=f; }
+  if(f!==PH.prevFrame){ if(f===3) slam(GAME.power()); PH.prevFrame=f; }
   if(PH.prevBy===null) PH.prevBy=fr.by;
   const dBy=fr.by-PH.prevBy; PH.prevBy=fr.by;
   PH.ball.forEach((b,i)=>{ if(dBy){ b.x[1]-=dBy*(0.55+i*0.1); b.v[1]-=dBy*4; }
@@ -209,41 +233,106 @@ function physics(dt,f){
   PH.cheek.forEach(c=>{ spring(c,175,6.5,dt); c.x[1]=Math.max(-6,Math.min(9,c.x[1])); c.x[0]=Math.max(-5,Math.min(5,c.x[0])); });
   PH.leg.forEach((l,i)=>{ l.v+=(-60*l.a-4.5*l.v)*dt; l.a=Math.max(-0.3,Math.min(0.3,l.a+l.v*dt)); });
 }
-let lastNow=null, acc=0;
+let lastNow=null, acc=0, lutT=0;
 function loop(now){
-  const t=now-t0, {i,total}=frameAt(t);
-  { const dt=lastNow===null?0:Math.min(0.05,Math.max(0,(now-lastNow)/1000)); lastNow=now; acc+=dt; while(acc>1/240){ physics(1/240,i); acc-=1/240; } PH.plap=Math.max(0,PH.plap-dt); }
+  const dt=lastNow===null?0:Math.min(0.05,Math.max(0,(now-lastNow)/1000)); lastNow=now;
+  const i=GAME.tick(dt);
+  { acc+=dt; while(acc>1/240){ physics(1/240,i); acc-=1/240; } PH.plap=Math.max(0,PH.plap-dt); }
+  if((GAME.shinyOn()||GAME.rainbowOn()) && now-lutT>120){ lutT=now; setLUTs(); }
   { const fr=META.frames[i], gap=fr.mode==='slap'?10:fr.mode==='mid'?9:8.5, drop=fr.mode==='slap'?1:fr.mode==='mid'?2:3;
     gl.uniform4fv(U('uCheek'),[PH.cheek[0].x[0],PH.cheek[0].x[1],Math.max(-0.5,Math.min(1,PH.cheek[0].x[1]*0.12)),0, PH.cheek[1].x[0],PH.cheek[1].x[1],Math.max(-0.5,Math.min(1,PH.cheek[1].x[1]*0.12)),0]);
     gl.uniform4fv(U('uBall'),[160-gap,fr.by+drop,PH.ball[0].x[0],PH.ball[0].x[1], 160+gap,fr.by,PH.ball[1].x[0],PH.ball[1].x[1]]);
     gl.uniform4f(U('uSack'),fr.sackTop,PH.ballSq[0],PH.ballSq[1],0); gl.uniform4f(U('uLeg'),PH.leg[0].a,PH.leg[1].a,0,0); }
   // the lamp: a candle that wanders on its own, or follows the mouse
   const flick=0.92+0.08*Math.sin(now*0.023)+0.05*Math.sin(now*0.071);
-  const lp=S.mouse||[230+Math.sin(now*0.0004)*30, 40+Math.cos(now*0.0005)*10];
-  gl.uniform1i(U('uFrame'),i); gl.uniform3f(U('uLamp'),lp[0],lp[1],46); gl.uniform1f(U('uLampOn'),S.lamp?flick:0); gl.uniform1f(U('uPixel'),S.pixel?1:0); gl.uniform1f(U('uTime'),now/1000);
+  const lp=MOUSE||[230+Math.sin(now*0.0004)*30, 40+Math.cos(now*0.0005)*10];
+  gl.uniform1i(U('uFrame'),i); gl.uniform3f(U('uLamp'),lp[0],lp[1],46); gl.uniform1f(U('uLampOn'),S.lamp?flick:0); gl.uniform1f(U('uPixel'),S.pixel?1:0); gl.uniform1f(U('uTime'),now/1000); gl.uniform1f(U('uSheen'),GAME.sheen());
   gl.viewport(0,0,320,180); gl.drawArrays(gl.TRIANGLES,0,3);
   // HUD
   hbuf.fill(0); const c=new Canvas2(hbuf,320,180);
-  const phaseToHit=((t%total)/total);
-  const hitAt=(META.frames.slice(0,3).reduce((a,f)=>a+f.ms,0))/(META.frames.reduce((a,f)=>a+f.ms,0));
-  let d=hitAt-phaseToHit; if(d<0) d+=1;
-  UI.rhythm(c,160,96,d<0.7?d/0.7:0,C,(d>0.93||d<0.03)?'PERFECT!':null);
-  if(PH.plap>0.1) c.textOutlined('PLAP!',196,104,C.paper,C.ink);
-  UI.hud(c,{score:Math.floor(t/40),hearts:3,combo:[Math.floor(t/400)%2000,Math.floor(t/1000)%99],kinsey:S.kinsey,toolHot:-1},C);
-  const lines=UI.LINES[S.kinsey]||UI.LINES[3]; UI.speech(c,6,150,lines[Math.floor(t/3500)%lines.length],C);
+  GAME.draw(c);
   hctx.putImageData(new ImageData(hbuf,320,180),0,0);
   requestAnimationFrame(loop);
 }
 // ------------------------------------------------------------ controls -----
 const $=id=>document.getElementById(id);
-$('bLight').onclick=()=>{ S.pixel=!S.pixel; $('bLight').textContent='Lighting: '+(S.pixel?'pixel bands':'smooth'); };
-$('bPal').onclick=()=>{ S.gray=!S.gray; $('bPal').textContent='Palette: '+(S.gray?'grayscale':'color'); setLUTs(); };
-$('bLamp').onclick=()=>{ S.lamp=!S.lamp; $('bLamp').classList.toggle('on',S.lamp); $('bLamp').textContent='Lamp: '+(S.lamp?'on (move mouse)':'off'); };
-$('bCam').onclick=()=>{ $('bCam').textContent='Camera: close (wide set in progress)'; };
-$('kin').oninput=e=>{ S.kinsey=+e.target.value; $('kv').textContent=S.kinsey; };
-$('hud').onmousemove=e=>{ const r=e.target.getBoundingClientRect(); S.mouse=[(e.clientX-r.left)/r.width*320,(e.clientY-r.top)/r.height*180]; };
-$('hud').onmouseleave=()=>{ S.mouse=null; };
-window.__S=S;
+const toHud=e=>{ const r=$('hud').getBoundingClientRect(); return [(e.clientX-r.left)/r.width*320,(e.clientY-r.top)/r.height*180]; };
+$('hud').addEventListener('pointerdown',e=>{ e.preventDefault(); const [x,y]=toHud(e); GAME.pointerDown(x,y); });
+window.addEventListener('pointerup',()=>GAME.pointerUp());
+$('hud').addEventListener('pointermove',e=>{ if(e.pointerType==='mouse') MOUSE=toHud(e); });
+$('hud').addEventListener('pointerleave',()=>{ MOUSE=null; });
+window.addEventListener('keydown',e=>{ if(!$('modal').hidden) { if(e.code==='Escape') closePanel(); return; } GAME.key(e,true); });
+window.addEventListener('keyup',e=>GAME.key(e,false));
+// ------------------------------------------------------------ menus --------
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let panelName=null;
+function openPanel(n){ panelName=n; $('modal').hidden=false; renderPanel(); }
+function closePanel(){ $('modal').hidden=true; panelName=null; }
+$('modal').addEventListener('click',e=>{ if(e.target.id==='modal') closePanel(); });
+document.querySelectorAll('#bar button[data-panel]').forEach(b=>b.onclick=()=>openPanel(b.dataset.panel));
+function face(al){ const cv=document.createElement('canvas'); cv.width=34; cv.height=40; const buf=new Uint8ClampedArray(34*40*4); const c=new Canvas2(buf,34,40);
+  GAME.portrait(c,0,0,{...al,kinsey:0,wigGone:true},4,performance.now()/1000); cv.getContext('2d').putImageData(new ImageData(buf,34,40),0,0); return cv; }
+function renderPanel(){
+  const G=GAME, S2=G.S, el=$('sheet'), f=G.fmt; let h='<button class="close" id="pClose">Close</button>';
+  if(panelName==='shop'){
+    h+=`<h2>Shop</h2><p class="sub"><span class="gold">${f(S2.pts)} points</span> · alumni earn ${G.passiveRate().toFixed(1)}/s</p>`;
+    for(const [id,u] of Object.entries(G.UPGRADES)){ const lv=S2.upg[id], max=u.tiers?u.tiers.length-1:u.max, cost=u.tiers?u.cost[lv+1]:u.cost[lv];
+      const now=u.tiers?u.tiers[lv]:(lv?'level '+lv:'not owned'), done=lv>=max;
+      h+=`<div class="row"><div><b>${u.name}</b> <span class="dim">(${esc(now)})</span><small>${esc(u.desc)}</small></div>
+        <button data-buy="${id}" ${done||S2.pts<cost?'disabled':''}>${done?'Maxed':(u.tiers?u.tiers[lv+1]+': ':'')+f(cost)}</button></div>`; }
+    const d=new Date().toDateString()!==S2.daily;
+    h+=`<div class="row"><div><b>Daily stubborn guy</b><small>A very stubborn guy, once a day. Pays 5x.</small></div><button id="pDaily" ${d?'':'disabled'}>${d?'Queue him':'Done today'}</button></div>`;
+  }
+  if(panelName==='lounge'){
+    const n=S2.alumni.length;
+    h+=`<h2>Bro Lounge</h2><p class="sub">${n} converted guys hanging out · earning <span class="gold">${G.passiveRate().toFixed(1)}/s</span>, even while you're away</p>`;
+    const furn=[[1,'a beanbag'],[3,'a gaming chair'],[6,'sports on the TV'],[10,'a beer pong table'],[15,'a neon beer sign'],[25,'a fridge full of Monster']];
+    h+=`<p class="sub">The lounge has ${furn.filter(x=>n>=x[0]).map(x=>x[1]).join(', ')||'nothing yet'}${n?`, and ${n*3} empty beer cans`:''}.</p><div class="grid" id="alGrid"></div>`;
+    if(!n) h+='<p class="sub">Convert your first guy and he moves in here.</p>';
+  }
+  if(panelName==='city'){
+    const c=G.cityOf(S2.tier), bossIn=Math.max(0,G.BOSS_AFTER-S2.cityConv);
+    h+=`<h2>${esc(c.name)}</h2><p class="sub">City ${S2.tier+1} · boss: <b>${esc(c.boss)}</b> (${esc(c.title)})</p>`;
+    h+=`<div class="row"><div><b>Boss</b><small>${S2.bossBeaten?'<span class="ok">Beaten. You can rebirth.</span>':bossIn?`Shows up after ${bossIn} more conversions here.`:'He is up next. Good luck.'}</small></div></div>`;
+    h+=`<div class="row"><div><b>Rebirth: The Straight Agenda</b><small>Move to a gayer city. Resets points, upgrades and alumni. Pays <span class="gold">${G.flannelNow()} Flannel</span> (from ${S2.runConv} conversions this run).</small></div><button id="pReb" ${S2.bossBeaten?'':'disabled'}>Rebirth</button></div>`;
+    h+=`<h2 style="margin-top:12px">Perks</h2><p class="sub"><span class="gold">${S2.flannel} Flannel</span> · permanent, they survive rebirths</p>`;
+    for(const [id,p] of Object.entries(G.PERKS)) h+=`<div class="row"><div><b>${p.name}</b><small>${esc(p.desc)}</small></div><button data-perk="${id}" ${S2.perks[id]||S2.flannel<p.cost?'disabled':''}>${S2.perks[id]?'Owned':p.cost+' Flannel'}</button></div>`;
+    h+=`<p class="sub" style="margin-top:10px">Route: ${G.CITIES.map((x,i)=>i<S2.tier?`<s>${esc(x.name)}</s>`:i===S2.tier?`<b>${esc(x.name)}</b>`:esc(x.name)).join(' → ')} → endless Pride Parade</p>`;
+  }
+  if(panelName==='trophies'){
+    const got=Object.keys(S2.ach).length;
+    h+=`<h2>Trophies</h2><p class="sub">${got} of ${Object.keys(G.ACH).length}</p>`;
+    for(const [id,[n,d]] of Object.entries(G.ACH)) h+=`<div class="row"><div><b class="${S2.ach[id]?'gold':'dim'}">${n}</b><small>${esc(d)}</small></div><span class="${S2.ach[id]?'ok':'dim'}">${S2.ach[id]?'Unlocked':'Locked'}</span></div>`;
+  }
+  if(panelName==='stats'){
+    const st=S2.stats, rows=[['Guys converted',st.conv],['Creampies',st.creampies],['Condoms filled',st.condoms],['Litres',st.litres.toFixed(2)],['Beds broken',st.beds],['Times someone said "no homo"',st.nohomo],['Perfect hits',st.perfects],['Mega nuts',st.megas],['Condoms swept',st.swept],['Best combo',st.bestCombo],['Chaos handled',st.events],['Time played',Math.floor(st.time/60)+' min']];
+    h+='<h2>Stats</h2>'+rows.map(([a,b])=>`<div class="row"><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('');
+  }
+  if(panelName==='settings'){
+    const o=(k,v,label)=>`<button data-set="${k}" data-val="${v}" class="${S2.settings[k]===v?'on':''}">${label}</button>`;
+    h+=`<h2>Settings</h2>
+      <div class="row"><span>Shading</span><span>${o('pixel',false,'Smooth')} ${o('pixel',true,'Pixel bands')}</span></div>
+      <div class="row"><span>Palette</span><span>${o('gray',false,'Color')} ${o('gray',true,'Grayscale + pink')}</span></div>
+      <div class="row"><span>Candle light</span><span>${o('lamp',true,'On')} ${o('lamp',false,'Off')}</span></div>
+      <div class="row"><span>Climax</span><span>${o('climax','creampie','Creampie')} ${o('climax','condom','Condom')}</span></div>
+      <div class="row"><span>Sound and music</span><span>${o('sound',false,'Off')} ${o('sound',true,'On')}</span></div>
+      <div class="row"><span>Mirror Mode (S2G)</span><span class="dim">${S2.perks.mirror?'Coming soon':'Needs the Mirror Mode perk'}</span></div>
+      <div class="row"><span>Wipe save</span><button id="pWipe">Start over</button></div>`;
+  }
+  el.innerHTML=h;
+  $('pClose').onclick=closePanel;
+  el.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{ G.buy(b.dataset.buy); renderPanel(); });
+  el.querySelectorAll('[data-perk]').forEach(b=>b.onclick=()=>{ G.buyPerk(b.dataset.perk); renderPanel(); });
+  el.querySelectorAll('[data-set]').forEach(b=>b.onclick=()=>{ const v=b.dataset.val; S2.settings[b.dataset.set]=v==='true'?true:v==='false'?false:v; G.save(); if(b.dataset.set==='gray') setLUTs(); if(b.dataset.set==='sound'&&S2.settings.sound) G.unlockAudio(); renderPanel(); });
+  if($('pDaily')) $('pDaily').onclick=()=>{ G.daily(); renderPanel(); };
+  if($('pReb')) $('pReb').onclick=()=>{ G.rebirth(); closePanel(); };
+  if($('pWipe')) $('pWipe').onclick=()=>{ if($('pWipe').dataset.sure){ G.reset(); } else { $('pWipe').dataset.sure=1; $('pWipe').textContent='Tap again to wipe everything'; } };
+  if($('alGrid')) S2.alumni.slice().reverse().forEach(al=>{ const d=document.createElement('div'); d.className='al'; d.appendChild(face(al));
+    const r=G.RARITY[al.rar]; const t=document.createElement('div');
+    t.innerHTML=`<b>${esc(al.name)}</b><br><span class="dim">${esc(G.ARCH[al.arch].name.toLowerCase())}</span> · <span style="color:rgb(${r[3].join(',')})">${(al.shiny?'shiny ':'')+r[0].toLowerCase()}</span><br><span class="gold">${G.JOBS_ALUMNI[al.job][0].toLowerCase()}</span><br>now enjoys ${esc(al.enjoys.join(', '))}`;
+    d.appendChild(t); $('alGrid').appendChild(d); });
+}
+window.__G=GAME;
 boot();
 </script>
 </body>

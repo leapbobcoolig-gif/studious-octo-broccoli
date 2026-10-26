@@ -9,6 +9,8 @@ page = page.replace(/<!doctype html>|<\/?html>|<head>|<\/head>|<body>|<\/body>|<
 page = page.replace(/<title>[^<]*<\/title>/, '<title>Straight Up Bedroom</title>\n<style>:root{color-scheme:dark}</style>')
 const ui = fs.readFileSync(path.join(root, 'ui.js'), 'utf8')
 page = page.replace('<script src="ui.js"></script>', () => `<script>\n${ui}\n</script>`)
+const gamejs = fs.readFileSync(path.join(root, 'game.js'), 'utf8')
+page = page.replace('<script src="game.js"></script>', () => `<script>\n${gamejs}\n</script>`)
 page = page.replace(/'(game\/sprites\/[^']+\.png)'/g, (m, f) => `'data:image/png;base64,${fs.readFileSync(path.join(root, f)).toString('base64')}'`)
 page = page.replace(/fetch\('game\/sprites\/press_close\.json'\)\.then\(r=>r\.json\(\)\)/, () => `Promise.resolve(${fs.readFileSync(path.join(root, 'game/sprites/press_close.json'), 'utf8').trim()})`)
 fs.mkdirSync(path.dirname(out), { recursive: true })
