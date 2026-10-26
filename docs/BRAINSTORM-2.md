@@ -35,7 +35,6 @@ Every new lover shows up as a **dating-app profile card**:
 | Pup | Med | Moans become *"arf arf"*; you can pat his head for bonuses |
 | Gaymer | Med | Randomly pauses to check Discord; tap to drag him back |
 | Twunk | Med | Shirtless, so cosmetic shedding is faster |
-| Drag Queen (off duty) | High | Wig flies off at stage 3 with a sound effect |
 | **Gold Star 6.0** | Very High | Rare; boss-tier, never touched a woman, huge rewards |
 
 - **Rarities:** Common / Rare / Epic / Legendary, plus **Shiny** variants (rainbow sparkle palette, 1/500).

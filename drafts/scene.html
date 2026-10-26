@@ -1,0 +1,448 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bedroom Draft</title>
+<style>
+  html,body{margin:0;background:#0b0b0b;height:100%;display:flex;align-items:center;justify-content:center}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;width:min(100vw,177.7vh);height:auto}
+</style>
+</head>
+<body>
+<canvas id="c" width="320" height="180"></canvas>
+<script>
+// ============================================================================
+//  Procedural pixel renderer — draft 1
+//  Everything is drawn from primitives (ellipses + tapered capsules) into a
+//  320x180 buffer, shaded with a fake-3D normal, quantised to palette ramps
+//  with 4x4 Bayer dithering, then outlined where shapes overlap.
+// ============================================================================
+const W = 320, H = 180;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const img = ctx.createImageData(W, H);
+
+// ---------------------------------------------------------------- palettes --
+const BASE = {
+  ink:'#141414', outlineSoft:'#3a3a3a',
+  wall0:'#4e4e4e', wall1:'#5d5d5d', wall2:'#6b6b6b', trim:'#8e8e8e', trimD:'#3f3f3f',
+  floor0:'#454545', floor1:'#555555', floor2:'#636363',
+  night0:'#1e1e1e', night1:'#2c2c2c', cloud0:'#3d3d3d', cloud1:'#4f4f4f', star:'#f2f2f2',
+  wood0:'#6f6f6f', wood1:'#9a9a9a', wood2:'#bdbdbd', wood3:'#d8d8d8',
+  sheet0:'#a9a9a9', sheet1:'#cfcfcf', sheet2:'#e9e9e9', sheet3:'#fafafa',
+  her0:'#9a9a9a', her1:'#cdcdcd', her2:'#ececec', her3:'#ffffff',
+  his0:'#4f4f4f', his1:'#787878', his2:'#a3a3a3', his3:'#c6c6c6',
+  hair0:'#262626', hair1:'#3a3a3a', hair2:'#555555', hair3:'#6c6c6c',
+  pk0:'#5e2533', pk1:'#a14f61', pk2:'#d9899a', pk3:'#f6c3cd',
+  net:'#2a2a2a', netc:'#8a8a8a', ui:'#f2f2f2', uiD:'#1a1a1a', heart:'#f2f2f2', heartPk:'#e8a0ae',
+  sweat:'#ffffff',
+};
+const COLOR16 = Object.assign({}, BASE, {
+  ink:'#1b1020',
+  wall0:'#3b2f55', wall1:'#4a3b6a', wall2:'#58487d', trim:'#8b78b0', trimD:'#2a2140',
+  floor0:'#3a2a3f', floor1:'#4c3650', floor2:'#5d4262',
+  night0:'#0f1530', night1:'#1a2448', cloud0:'#2b3566', cloud1:'#3d4a85', star:'#fff6c8',
+  wood0:'#5b3a2e', wood1:'#875640', wood2:'#b07a55', wood3:'#d4a27a',
+  sheet0:'#8f93b8', sheet1:'#b9bddb', sheet2:'#dcdff2', sheet3:'#f5f6ff',
+  her0:'#b36d5e', her1:'#e3a184', her2:'#f6c9a8', her3:'#ffe8d4',
+  his0:'#6a3f2c', his1:'#9a6043', his2:'#c48a63', his3:'#e1ae84',
+  hair0:'#2a1a14', hair1:'#45291d', hair2:'#64402c', hair3:'#875a3c',
+  pk0:'#6b1f35', pk1:'#b8405f', pk2:'#ea7b93', pk3:'#ffbccb',
+  net:'#1b1020', netc:'#a8775f', heart:'#ff5c86', heartPk:'#ff9ab4',
+});
+function derive(base, stops){ // map every colour by luminance onto a short ramp
+  const out = {};
+  const ramp = stops.map(h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]);
+  for (const k in base){
+    const h = base[k];
+    const r=parseInt(h.slice(1,3),16), g=parseInt(h.slice(3,5),16), b=parseInt(h.slice(5,7),16);
+    const L = (0.3*r+0.59*g+0.11*b)/255;
+    const f = Math.min(ramp.length-1, Math.round(L*(ramp.length-1)));
+    out[k] = '#'+ramp[f].map(v=>v.toString(16).padStart(2,'0')).join('');
+  }
+  return out;
+}
+const PALETTES = {
+  gray: BASE,
+  color: COLOR16,
+  gameboy: derive(BASE, ['#0f380f','#306230','#8bac0f','#9bbc0f']),
+  sepia: derive(BASE, ['#1d140e','#3e2c1f','#6b4c33','#9a7552','#c6a27a','#ecd3ad','#fff4dd']),
+};
+// gameboy pink accents become the lightest green otherwise everything's mud
+let PAL = BASE, RGB = {};
+function setPalette(name){
+  PAL = PALETTES[name] || BASE;
+  RGB = {};
+  for (const k in PAL){ const h=PAL[k]; RGB[k]=[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+}
+
+// ---------------------------------------------------------------- buffers ---
+const colBuf = new Array(W*H).fill('ink');
+const sid = new Int32Array(W*H);
+const zb  = new Float32Array(W*H);
+const shd = new Float32Array(W*H);
+const BAYER = [0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5].map(v=>(v+0.5)/16);
+const bay = (x,y)=>BAYER[(y&3)*4+(x&3)];
+
+function px(x,y,k){ x|=0; y|=0; if(x>=0&&y>=0&&x<W&&y<H) colBuf[y*W+x]=k; }
+function rect(x,y,w,h,k){ for(let j=y;j<y+h;j++) for(let i=x;i<x+w;i++) px(i,j,k); }
+function ditherRect(x,y,w,h,k1,k2,amt){ // amt 0..1 of k2
+  for(let j=y;j<y+h;j++) for(let i=x;i<x+w;i++) px(i,j, bay(i,j)<amt?k2:k1);
+}
+function vGrad(x,y,w,h,keys){ // vertical dithered gradient through keys
+  for(let j=0;j<h;j++){ const f=j/(h-1)*(keys.length-1);
+    for(let i=0;i<w;i++){ const lv=Math.min(keys.length-1, Math.floor(f+bay(x+i,y+j))); px(x+i,y+j,keys[lv]); } }
+}
+function line(x0,y0,x1,y1,k){ x0|=0;y0|=0;x1|=0;y1|=0;
+  const dx=Math.abs(x1-x0), dy=-Math.abs(y1-y0), sx=x0<x1?1:-1, sy=y0<y1?1:-1; let e=dx+dy;
+  for(;;){ px(x0,y0,k); if(x0===x1&&y0===y1)break; const e2=2*e; if(e2>=dy){e+=dy;x0+=sx;} if(e2<=dx){e+=dx;y0+=sy;} } }
+function fillEllipseFlat(cx,cy,rx,ry,k){ for(let y=Math.floor(cy-ry);y<=cy+ry;y++) for(let x=Math.floor(cx-rx);x<=cx+rx;x++){ const u=(x+.5-cx)/rx,v=(y+.5-cy)/ry; if(u*u+v*v<=1)px(x,y,k);} }
+
+// ------------------------------------------------------ shaded shape pass ---
+const L = (()=>{ const v=[-0.35,-0.55,0.76]; const m=Math.hypot(...v); return v.map(a=>a/m); })();
+let shapes = [];
+function ell(o){ shapes.push(Object.assign({t:'e',rot:0},o)); }
+function cap(o){ shapes.push(Object.assign({t:'c'},o)); }
+
+function rasterShapes(){
+  sid.fill(-1); zb.fill(-1e9);
+  shapes.forEach((s,i)=>{
+    let x0,x1,y0,y1;
+    if(s.t==='e'){ const R=Math.max(s.rx,s.ry); x0=s.cx-R;x1=s.cx+R;y0=s.cy-R;y1=s.cy+R; }
+    else { x0=Math.min(s.x1-s.r1,s.x2-s.r2); x1=Math.max(s.x1+s.r1,s.x2+s.r2); y0=Math.min(s.y1-s.r1,s.y2-s.r2); y1=Math.max(s.y1+s.r1,s.y2+s.r2); }
+    x0=Math.max(0,Math.floor(x0)); y0=Math.max(0,Math.floor(y0)); x1=Math.min(W-1,Math.ceil(x1)); y1=Math.min(H-1,Math.ceil(y1));
+    const c=Math.cos(-s.rot||0), sn=Math.sin(-s.rot||0);
+    for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+      if(s.clip && (x<s.clip[0]||y<s.clip[1]||x>=s.clip[2]||y>=s.clip[3])) continue;
+      const px_=x+.5, py_=y+.5; let nx,ny,d2;
+      if(s.t==='e'){
+        const dx=px_-s.cx, dy=py_-s.cy; const lx=dx*c-dy*sn, ly=dx*sn+dy*c;
+        const u=lx/s.rx, v=ly/s.ry; d2=u*u+v*v; if(d2>1)continue;
+        // rotate normal back to screen
+        nx=u*Math.cos(s.rot||0)-v*Math.sin(s.rot||0); ny=u*Math.sin(s.rot||0)+v*Math.cos(s.rot||0);
+      } else {
+        const ax=s.x2-s.x1, ay=s.y2-s.y1, l2=ax*ax+ay*ay||1;
+        let t=((px_-s.x1)*ax+(py_-s.y1)*ay)/l2; t=Math.max(0,Math.min(1,t));
+        const cx=s.x1+ax*t, cy=s.y1+ay*t, r=s.r1+(s.r2-s.r1)*t;
+        const dx=px_-cx, dy=py_-cy, d=Math.hypot(dx,dy); if(d>r)continue;
+        nx=dx/r; ny=dy/r; d2=(d/r)*(d/r);
+      }
+      const z = s.z + (s.bulge??1)*Math.sqrt(Math.max(0,1-d2))*0.01;
+      const idx=y*W+x; if(z<zb[idx])continue;
+      const nz=Math.sqrt(Math.max(0,1-nx*nx-ny*ny));
+      let sh = Math.max(0, nx*L[0]+ny*L[1]+nz*L[2]);
+      sh = 0.18 + sh*0.95 - (s.ao? s.ao*(1-nz):0);
+      zb[idx]=z; sid[idx]=i; shd[idx]=Math.max(0,Math.min(1,sh));
+    }
+  });
+}
+function compositeShapes(){
+  const n4=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const idx=y*W+x, i=sid[idx]; if(i<0)continue; const s=shapes[i];
+    // outline: neighbour is empty, or belongs to another group that sits behind us
+    let edge=false;
+    for(const [ox,oy] of n4){ const X=x+ox, Y=y+oy;
+      if(X<0||Y<0||X>=W||Y>=H){continue;}
+      const j=sid[Y*W+X];
+      if(j<0){ edge=!s.noOutlineBg; if(edge)break; continue; }
+      const o=shapes[j];
+      if(o.g!==s.g && (o.z<s.z || (o.z===s.z && j<i))){ edge=true; break; }
+    }
+    if(edge && s.outline!==false){ colBuf[idx]=s.ol||'ink'; continue; }
+    const ramp=s.m; const v=shd[idx]*(ramp.length-1);
+    let k = ramp[Math.max(0,Math.min(ramp.length-1, Math.floor(v+0.35+(bay(x,y)-0.5)*0.45)))];
+    if(s.net && (((x+y)%6)===0 || ((x-y+600)%6)===0)) k = shd[idx]<0.45 ? 'net' : s.net;
+    colBuf[idx]=k;
+  }
+}
+
+// ------------------------------------------------------------- pixel font ---
+const GLYPH = {A:'010101111101101',B:'110101110101110',C:'011100100100011',D:'110101101101110',E:'111100110100111',F:'111100110100100',G:'011100101101011',H:'101101111101101',I:'111010010010111',J:'001001001101010',K:'101101110101101',L:'100100100100111',M:'101111111101101',N:'110101101101101',O:'010101101101010',P:'110101110100100',Q:'010101101110011',R:'110101110101101',S:'011100010001110',T:'111010010010010',U:'101101101101111',V:'101101101101010',W:'101101111111101',X:'101101010101101',Y:'101101010010010',Z:'111001010100111','0':'111101101101111','1':'010110010010111','2':'110001010100111','3':'110001010001110','4':'101101111001001','5':'111100110001110','6':'011100111101111','7':'111001010010010','8':'111101111101111','9':'111101111001110',':':'000010000010000','!':'010010010000010','+':'000010111010000','.':'000000000000010','-':'000000111000000','?':'110001010000010','/':'001001010100100',' ':'000000000000000',"'":'010010000000000',',':'000000000010100','"':'101101000000000','(':'010100100100010',')':'010001001001010','&':'010101010101011','#':'101111101111101','~':'000011110000000'};
+function text(str,x,y,k,shadow){ str=str.toUpperCase(); let cx=x;
+  for(const ch of str){ const g=GLYPH[ch]||GLYPH['?'];
+    for(let j=0;j<5;j++) for(let i=0;i<3;i++) if(g[j*3+i]==='1'){ if(shadow)px(cx+i+1,y+j+1,shadow); }
+    for(let j=0;j<5;j++) for(let i=0;i<3;i++) if(g[j*3+i]==='1') px(cx+i,y+j,k);
+    cx+=4; } return cx; }
+const HEART=['0110110','1111111','1111111','0111110','0011100','0001000'];
+function heart(x,y,k,ol){ for(let j=0;j<6;j++)for(let i=0;i<7;i++) if(HEART[j][i]==='1')px(x+i,y+j,k); }
+
+// ------------------------------------------------------------ background ----
+function rng(seed){ return ()=>{ seed=(seed*1664525+1013904223)>>>0; return seed/4294967296; }; }
+function drawRoom(){
+  // wall + floor
+  vGrad(0,0,W,132,['wall0','wall1','wall2']);
+  rect(0,128,W,3,'trim'); rect(0,131,W,1,'trimD');
+  vGrad(0,132,W,48,['floor2','floor1','floor0']);
+  for(let x=0;x<W;x+=23) line(x,132,x-14,179,'floor0'); // floorboards in perspective-ish
+  // windows
+  for(const wx of [18,222]){
+    rect(wx-3,14,86,74,'trim'); rect(wx-3,86,86,3,'trimD');
+    vGrad(wx,17,80,66,['night0','night1']);
+    const r=rng(wx*7+3);
+    for(let s=0;s<22;s++){ const sx=wx+2+(r()*76|0), sy=19+(r()*40|0); px(sx,sy,'star'); if(r()<.15){px(sx-1,sy,'star');px(sx+1,sy,'star');px(sx,sy-1,'star');px(sx,sy+1,'star');} }
+    // lumpy clouds
+    for(let c=0;c<14;c++){ const cx=wx+(r()*80), cy=62+r()*20, rr=6+r()*9; fillEllipseFlat(cx,cy,rr,rr*.7, r()<.5?'cloud0':'cloud1'); }
+    // re-crop window frame edges
+    rect(wx-3,14,3,74,'trim'); rect(wx+80,14,3,74,'trim'); rect(wx-3,14,86,3,'trim'); rect(wx-3,83,86,3,'trim');
+    line(wx-3,14,wx+82,14,'trimD');
+  }
+  // dressers
+  for(const [dx,dw] of [[38,74],[208,74]]){
+    rect(dx,96,dw,4,'wood3'); rect(dx,100,dw,52,'wood1'); line(dx,100,dx+dw-1,100,'trimD');
+    for(let d=0;d<3;d++){ const y=103+d*16; rect(dx+3,y,dw-6,13,'wood2'); line(dx+3,y+12,dx+dw-4,y+12,'wood0'); rect(dx+dw/2-4|0,y+5,8,2,'wood0'); }
+    rect(dx+2,152,4,6,'wood0'); rect(dx+dw-6,152,4,6,'wood0');
+  }
+  // headboard
+  rect(104,58,112,4,'wood3');
+  for(let x=104;x<216;x++){ const arch=Math.round(6*Math.sin((x-104)/112*Math.PI)); for(let y=62-arch;y<62;y++)px(x,y,'wood3'); px(x,61-arch,'trimD'); }
+  rect(104,62,112,52,'wood2'); rect(110,66,100,44,'wood1');
+  for(let i=0;i<5;i++) for(let j=0;j<3;j++) px(122+i*19,74+j*13,'wood0'); // tufting
+  rect(104,62,2,52,'wood0'); rect(214,62,2,52,'wood0');
+  // mattress top (trapezoid) back edge y=112, front edge y=140
+  for(let y=112;y<=140;y++){ const f=(y-112)/28; const xl=Math.round(96-26*f), xr=Math.round(224+26*f);
+    for(let x=xl;x<=xr;x++){ const lv=Math.min(3, Math.floor(1.2+f*2.2+bay(x,y)*0.9)); px(x,y,['sheet0','sheet1','sheet2','sheet3'][lv]); } }
+  line(96,112,224,112,'ink'); line(96,112,70,140,'ink'); line(224,112,250,140,'ink');
+  // pillow peeking
+  fillEllipseFlat(160,113,40,4,'sheet2'); line(122,112,198,112,'ink');
+  // contact shadow under the couple
+  for(let y=118;y<141;y++)for(let x=118;x<203;x++){ const u=(x-160)/44,v=(y-130)/10; if(u*u+v*v<1 && bay(x,y)<0.55*(1-u*u-v*v)+0.2) px(x,y,'sheet0'); }
+  // mattress front face + rail + legs
+  rect(70,141,181,11,'sheet1'); line(70,140,250,140,'ink'); line(70,151,250,151,'ink');
+  for(let x=70;x<=250;x++) if(bay(x,146)<0.25)px(x,146+(x%2),'sheet0');
+  rect(66,152,189,9,'wood1'); line(66,152,254,152,'ink'); line(66,160,254,160,'ink');
+  rect(70,161,6,12,'wood0'); rect(245,161,6,12,'wood0'); rect(140,161,5,6,'wood0'); rect(176,161,5,6,'wood0');
+  line(66,152,66,160,'ink'); line(254,152,254,160,'ink');
+}
+
+// ---------------------------------------------------------- the couple ------
+const HER  = ['her0','her1','her2','her3'];
+const HIS  = ['his0','his1','his2','his3'];
+const HAIR = ['hair0','hair1','hair2','hair3'];
+const PINK = ['pk0','pk1','pk2','pk3'];
+const LIPS = ['pk1','pk2','pk3','pk3'];
+const MOUND = ['pk2','pk3','her2','her3'];
+const FACE = ['his1','his2','his2','his3'];
+
+function spring(t, period, amp, decay, freq){ // damped wobble restarting every impact
+  const tt = ((t % period)+period)%period;
+  return amp*Math.exp(-decay*tt)*Math.sin(freq*tt);
+}
+function buildCouple(t, opt){
+  shapes=[];
+  const bpm = opt.bpm||96, period = 60/bpm;
+  const ph = ((t/period)%1+1)%1;
+  // stroke: quick slam in (0..0.35), slower drag out. out=1 pulled back, 0 = balls deep
+  const out = Math.max(0, Math.min(1, ph<0.35 ? 1-(ph/0.35)**1.8 : ((ph-0.35)/0.65)**0.8));
+  const impactT = t - period*0.35;
+  const jig  = spring(impactT, period, 2.4, 7, 26);       // her cheeks ripple
+  const jigB = spring(impactT-0.03, period, 3.2, 6, 20);  // his balls swing late
+  const hy = 101 - out*13;                                // his hip line
+  const lean = out*1.5;
+
+  // ---------------- HER (no face, no tits: hips, thighs, pussy) ----------------
+  for (const sd of [-1,1]){
+    const g='herLeg'+sd;
+    cap({x1:160+sd*22, y1:124, r1:15, x2:160+sd*35, y2:86, r2:11, m:HER, net:'netc', z:24, g});                 // thigh
+    cap({x1:160+sd*35, y1:86, r1:10, x2:160+sd*33, y2:58+jig*0.5, r2:5, m:HER, net:'netc', z:23, g:g+'c'});     // calf
+    ell({cx:160+sd*33, cy:53+jig*0.5, rx:4, ry:6.5, rot:sd*0.1, m:HAIR, z:23.2, g:g+'f'});                     // stockinged foot
+  }
+  const sq = jig*0.06;
+  ell({cx:160, cy:126, rx:31, ry:12, m:HER, z:30, g:'her'});                                                   // hip bridge
+  ell({cx:142.5, cy:135+jig*0.5, rx:19*(1+sq*0.4), ry:16*(1-sq), rot:-0.16, m:HER, z:31, g:'herCL', ao:0.08});
+  ell({cx:177.5, cy:135+jig*0.5, rx:19*(1+sq*0.4), ry:16*(1-sq), rot:0.16, m:HER, z:31.01, g:'herCR', ao:0.08});
+
+  // pussy: pink mound, deep slit, lips that wrap the shaft and pinch shut under it
+  const vx=160, vy=125+jig*0.3, sr=4;
+  const spread = 1 + (1-out)*0.3;
+  ell({cx:vx, cy:vy+0.5, rx:7.5, ry:9.5, m:MOUND, z:32.5, g:'vulva', ol:'pk1'});
+  ell({cx:vx, cy:vy, rx:2.4*spread, ry:7.5, m:['pk0','pk0','pk1','pk1'], z:33, g:'vulva', outline:false});
+  for (const sd of [-1,1])
+    ell({cx:vx+sd*(sr+0.9)*spread, cy:vy+0.5, rx:2.6, ry:7, rot:sd*0.28, m:LIPS, z:41, g:'lip'+sd, ol:'pk0'});
+  ell({cx:160, cy:139+jig*0.5, rx:2, ry:1.6, m:['pk0','pk1','pk1','pk2'], z:33, g:'ass', ol:'pk0'});
+
+  // ---------------- HIM ----------------
+  const by = hy+16+jigB*0.6 + out*1.5;
+  cap({x1:160, y1:hy+8, r1:sr+0.3, x2:160, y2:vy+4, r2:sr, m:HIS, z:40, g:'cock'});
+  const bsq = out<0.12 ? 0.85 : 1;
+  ell({cx:155, cy:by, rx:6.4/bsq, ry:7*bsq, rot:0.15, m:HIS, z:45, g:'ballL', ao:0.06});
+  ell({cx:165, cy:by+0.4, rx:6.4/bsq, ry:7*bsq, rot:-0.15, m:HIS, z:45.01, g:'ballR', ao:0.06});
+
+  // back: narrow waist flaring into lats/shoulders
+  cap({x1:160, y1:hy-4, r1:16, x2:160, y2:hy-22, r2:17.5, m:HIS, z:48, g:'him'});
+  cap({x1:160, y1:hy-22, r1:17.5, x2:160, y2:hy-38+lean, r2:24, m:HIS, z:48, g:'him'});
+  for (const sd of [-1,1]){
+    ell({cx:160+sd*24, cy:hy-41+lean, rx:8.5, ry:7.5, m:HIS, z:48.5, g:'him'});                       // shoulder
+    cap({x1:160+sd*27, y1:hy-38+lean, r1:6.5, x2:160+sd*34, y2:hy-18, r2:5.5, m:HIS, z:47, g:'arm'+sd});
+    cap({x1:160+sd*34, y1:hy-18, r1:5.2, x2:160+sd*31, y2:hy-1, r2:4.2, m:HIS, z:47.1, g:'arm'+sd});
+    ell({cx:160+sd*30, cy:hy+1.5, rx:5, ry:3.8, m:HIS, z:47.3, g:'hand'+sd});                               // gripping her thighs
+  }
+  ell({cx:160, cy:hy-46+lean, rx:6, ry:5, m:HIS, z:48.6, g:'him'});
+  for (const sd of [-1,1]) ell({cx:160+sd*8.6, cy:hy-55+lean, rx:2.2, ry:3.2, m:HIS, z:48.65, g:'ear'+sd});
+  ell({cx:160, cy:hy-57+lean, rx:9, ry:8.5, m:HAIR, z:48.7, g:'head'});
+  ell({cx:157, cy:hy-61+lean, rx:5, ry:3, m:['hair1','hair2','hair3','hair3'], z:48.71, g:'head', outline:false});
+
+  const clench = out<0.12 ? 1 : 0;
+  ell({cx:150.5+clench*0.6, cy:hy+1, rx:12-clench*0.8, ry:12.5, rot:-0.12, m:HIS, z:50, g:'him'});
+  ell({cx:169.5-clench*0.6, cy:hy+1, rx:12-clench*0.8, ry:12.5, rot:0.12, m:HIS, z:50.01, g:'him'});
+  return {hy, by, vy, out, jig, lean};
+}
+
+function details(st){
+  const {hy,by,vy,lean} = st;
+  line(160,hy-5,160,hy+11,'ink');                                    // his crack
+  line(160,vy+8,160,137,'her1'); line(160,140,160,147,'ink');         // her perineum / crack
+  line(127,146,136,150,'her1'); line(193,146,184,150,'her1');         // under-cheek folds
+  line(160,by-3,160,by+5,'his0');                                    // ball seam
+  line(160,hy-24,160,hy-9,'his1');                                    // spine groove
+  line(146,hy-36+lean,151,hy-29,'his1'); line(174,hy-36+lean,169,hy-29,'his1'); // blades
+  px(154,hy-8,'his0'); px(166,hy-8,'his0');                          // back dimples
+  // fade haircut: skin pixels dithered into the hair at the nape
+  for(let x=153;x<=167;x++) if(bay(x,hy-46)<0.5) px(x,(hy-46+lean)|0,'his1');
+  if (st.out<0.2){ px(172,hy-30,'sweat'); px(172,hy-29,'sweat'); px(145,hy-20,'sweat'); px(186,108,'sweat'); }
+}
+
+function outlinedText(str,x,y){
+  for(const [ox,oy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,1],[-1,1],[1,-1]]) text(str,x+ox,y+oy,'ink');
+  text(str,x,y,'ui');
+}
+// ------------------------------------------------------------------- UI -----
+function drawUI(t, st, opt){
+  // score banner
+  for(let x=0;x<92;x++) for(let y=4;y<14;y++) if(bay(x,y) < 1-(x-60)/32 || x<60) px(x,y,'uiD');
+  text('SCORE: '+(opt.score??7815), 4, 7, 'ui');
+  for(let i=0;i<5;i++) heart(4+i*9, 18, i<(opt.hearts??3)?'heart':'uiD');
+  if (opt.combo){ text('+'+opt.combo[0], 6, 30, 'ui','uiD'); text('X'+opt.combo[1]+' COMBO', 6, 37, 'ui','uiD'); }
+  // onomatopoeia
+  if (st.out < 0.15){ outlinedText('PLAP!', 190, 104); }
+  // straightness / kinsey meter
+  const kx=244, ky=6; text('KINSEY', kx, ky, 'ui','uiD');
+  for(let i=0;i<7;i++){ const on = i < (opt.kinsey??4); rect(kx+i*9, ky+8, 7, 5, on?'heartPk':'uiD'); }
+  text(String(opt.kinsey??4), kx+64, ky+8, 'ui');
+  // tool sidebar
+  for(let i=0;i<7;i++){ const y=36+i*14; rect(300,y,13,12,'uiD'); rect(301,y+1,11,10,'wall0'); line(300,y,312,y,'trim');
+    // tiny icon blobs
+    const icons=['heartPk','sheet3','pk2','wood2','star','trim','sheet1']; rect(304,y+3,5,6,icons[i]); }
+  // NEW LOVER button
+  rect(108,166,62,10,'uiD'); text('NEW LOVER',112,168,'ui');
+}
+
+// ------------------------------------------------------- reaction portrait --
+// stage: 6 = denial, 3 = flustered, 0 = converted. Box is 56x60 at (ox,oy).
+const SHIRT = { 6:['pk1','pk2','pk3','pk3'], 3:['sheet0','sheet1','sheet2','sheet3'], 0:['hair1','hair2','his1','his2'] };
+const LINES = { 6:["THIS DOES NOTHING","FOR ME. AT ALL."], 3:["WHY IS IT SO WARM??","THIS IS JUST A PHASE"], 0:["BRO. PUSSY IS SO","MUCH BETTER. LOCK IN"] };
+
+function portraitPanel(ox,oy){
+  rect(ox-2,oy-2,60,64,'ink'); vGrad(ox,oy,56,60,['wall1','wall0']);
+}
+function portraitShapes(ox,oy,stage,t){
+  const fx=ox+28, hy0=oy+25, bob = stage===0 ? Math.round(Math.sin(t*10)) : 0, Z=100;
+  const sh=SHIRT[stage]; const clip=[ox,oy,ox+56,oy+60];
+  const n0=shapes.length;
+  ell({cx:fx, cy:oy+62, rx:30, ry:14, m:sh, z:Z, g:'shirt'});                       // shoulders/shirt
+  cap({x1:fx, y1:hy0+10, r1:6.5, x2:fx, y2:oy+50, r2:8, m:['his0','his1','his1','his2'], z:Z+1, g:'neck'});
+  cap({x1:fx, y1:hy0+bob, r1:13, x2:fx, y2:hy0+9+bob, r2:9.5, m:FACE, z:Z+2, g:'face'}); // skull + jaw
+  for (const sd of [-1,1]) ell({cx:fx+sd*13, cy:hy0+4+bob, rx:2.2, ry:3.4, m:HIS, z:Z+1.5, g:'ear'+sd});
+  if (stage===0){
+    // backwards cap: dome + strap nub, peak hidden behind
+    ell({cx:fx, cy:hy0-8+bob, rx:13.5, ry:8, m:['hair0','hair1','hair2','hair3'], z:Z+3, g:'cap'});
+    ell({cx:fx, cy:hy0-2+bob, rx:13, ry:2.4, m:['hair0','hair0','hair1','hair1'], z:Z+3.1, g:'capband'});
+  } else {
+    // twink swoop: volume on top + fringe falling across one brow
+    ell({cx:fx+1, cy:hy0-9+bob, rx:14, ry:8.5, m:HAIR, z:Z+3, g:'hair'});
+    ell({cx:fx-5, cy:hy0-4+bob, rx:9, ry:4.5, rot:-0.35, m:HAIR, z:Z+3.1, g:'hair'});
+    for (const sd of [-1,1]) ell({cx:fx+sd*11.5, cy:hy0-2+bob, rx:2.6, ry:5, m:HAIR, z:Z+3, g:'hair'});
+  }
+  for(let i=n0;i<shapes.length;i++) shapes[i].clip=clip;
+}
+function eye(ex,ey,stage,sd){
+  if (stage===6){ // half-lidded, unimpressed, glancing aside
+    rect(ex-2,ey,5,2,'her3'); line(ex-3,ey-1,ex+2,ey-1,'ink'); rect(ex+(sd<0?0:0),ey,2,2,'ink');
+    line(ex-3,ey-4+(sd>0?-1:0),ex+2,ey-4,'hair0');                 // one brow cocked
+  } else if (stage===3){ // wide, tiny pupils, worried brows
+    rect(ex-2,ey-1,5,3,'her3'); line(ex-3,ey-2,ex+2,ey-2,'ink'); px(ex,ey,'ink');
+    px(ex-3,ey-1,'ink');
+    if (sd<0) line(ex-3,ey-4,ex+2,ey-6,'hair0'); else line(ex-2,ey-6,ex+3,ey-4,'hair0');
+  } else { // fucked-stupid heart eyes
+    rect(ex-2,ey-1,5,3,'her3'); line(ex-3,ey-2,ex+2,ey-2,'ink');
+    px(ex-1,ey-1,'pk1'); px(ex+1,ey-1,'pk1'); rect(ex-1,ey,3,1,'pk1'); px(ex,ey+1,'pk1');
+    line(ex-3,ey-6,ex+2,ey-6,'hair0');
+  }
+}
+function portraitDetails(ox,oy,stage,t){
+  const fx=ox+28, hy0=oy+25, bob = stage===0 ? Math.round(Math.sin(t*10)) : 0;
+  const ey=hy0+3+bob;
+  eye(fx-5,ey,stage,-1); eye(fx+5,ey,stage,1);
+  px(fx,ey+5,'his1'); px(fx+1,ey+5,'his1');                         // nose
+  const my=ey+9;
+  if (stage===6){ line(fx-3,my,fx+2,my,'ink'); px(fx+3,my-1,'ink'); }  // smirk
+  if (stage===3){ px(fx-3,my,'ink');px(fx-2,my-1,'ink');px(fx-1,my,'ink');px(fx,my-1,'ink');px(fx+1,my,'ink');px(fx+2,my-1,'ink'); }
+  if (stage===0){ rect(fx-3,my-1,7,3,'ink'); rect(fx-2,my+1,5,2,'pk2'); rect(fx-2,my-1,5,1,'her3'); } // dumb grin, tongue
+  // blush grows as he breaks
+  const bl = stage===6?0:stage===3?0.45:0.7;
+  for(let y=ey+3;y<ey+6;y++) for(const bx of [fx-9,fx+4]) for(let x=bx;x<bx+5;x++) if(bay(x,y)<bl) px(x,y,'pk2');
+  if (stage<=3){ px(fx+11,ey-5,'sweat'); px(fx+11,ey-4,'sweat'); px(fx+12,ey-3,'ink'); px(fx+10,ey-3,'ink'); px(fx+11,ey-2,'ink'); }
+  if (stage!==0){ line(fx-9,hy0-5+bob,fx-3,hy0-2+bob,'hair0'); line(fx-4,hy0-7+bob,fx+1,hy0-4+bob,'hair0'); }
+  // cosmetic shedding
+  if (stage===6){ line(fx-5,oy+50,fx+5,oy+50,'ink'); px(fx,oy+51,'heartPk'); }             // choker
+  if (stage===0){ for(let y=oy+51;y<oy+60;y++) for(let x=ox;x<ox+56;x++) if(((x>>2)+(y>>2))%2===0 && colBuf[y*W+x]!=='ink' && sid[y*W+x]>=0 && shapes[sid[y*W+x]].g==='shirt') px(x,y,'hair0'); } // flannel check
+}
+function speech(x,y,lines){
+  const w = Math.max(...lines.map(l=>l.length))*4+6, h=lines.length*7+5;
+  rect(x,y,w,h,'ink'); rect(x+1,y+1,w-2,h-2,'ui');
+  px(x-1,y+h-3,'ink'); px(x-2,y+h-2,'ink'); px(x-1,y+h-2,'ui'); px(x,y+h-3,'ui');
+  lines.forEach((l,i)=>text(l,x+3,y+3+i*7,'uiD'));
+}
+
+// ------------------------------------------------------------ dating card --
+function drawCard(t, opt){
+  vGrad(0,0,W,H,['night0','night1','wall0']);
+  for(let i=0;i<40;i++){ const r=rng(i*31); px(r()*W|0, r()*H|0, 'star'); }
+  const cx=96, cy=14, cw=128, ch=152;
+  rect(cx+3,cy+3,cw,ch,'ink'); rect(cx,cy,cw,ch,'ui'); rect(cx,cy,cw,1,'ink'); rect(cx,cy+ch-1,cw,1,'ink'); rect(cx,cy,1,ch,'ink'); rect(cx+cw-1,cy,1,ch,'ink');
+  portraitPanel(cx+36,cy+8);
+  const g = opt.guy;
+  text(g.name, cx+(cw-g.name.length*4)/2|0, cy+74, 'uiD');
+  text(g.nick, cx+(cw-g.nick.length*4)/2|0, cy+81, 'pk1');
+  let y=cy+92;
+  for(const [k,v] of g.stats){ text(k,cx+6,y,'his1'); text(v,cx+46,y,'uiD'); y+=7; }
+  y+=2; line(cx+6,y,cx+cw-7,y,'sheet0'); y+=4;
+  for(const l of g.bio){ text(l,cx+6,y,'uiD'); y+=7; }
+  // swipe buttons
+  rect(cx+16,cy+ch+4-18,26,10,'uiD'); text('NOPE',cx+21,cy+ch-12,'ui');
+  rect(cx+cw-44,cy+ch+4-18,28,10,'pk1'); text('CONVERT',cx+cw-43,cy+ch-12,'ui');
+  return {ox:cx+36, oy:cy+8};
+}
+
+// --------------------------------------------------------------- render -----
+const GUY = { name:'BRAYDEN KOWALSKI', nick:'"BRUNCH"',
+  stats:[['AGE','24'],['HEIGHT',"5'9 (5'7)"],['JOB','BRAND AMBASSADOR']],
+  bio:['ICED OAT LATTE ENJOYER.','HAS NEVER SEEN A PUSSY.'] };
+function render(t, opt={}){
+  setPalette(opt.pal||'gray');
+  const stage = opt.stage ?? 6;
+  if (opt.mode==='card'){
+    const p = drawCard(t, Object.assign({guy:GUY}, opt));
+    shapes=[]; portraitShapes(p.ox,p.oy,stage,t);
+    rasterShapes(); compositeShapes(); portraitDetails(p.ox,p.oy,stage,t);
+  } else {
+    drawRoom();
+    const st = buildCouple(t, opt);
+    const pox=6, poy=114;
+    if (opt.ui!==false){ portraitPanel(pox,poy); portraitShapes(pox,poy,stage,t); }
+    rasterShapes(); compositeShapes(); details(st);
+    if (opt.ui!==false){ portraitDetails(pox,poy,stage,t); speech(6,90,LINES[stage]); drawUI(t, st, opt); }
+  }
+  const d=img.data;
+  for(let i=0;i<W*H;i++){ const c=RGB[colBuf[i]]||[255,0,255]; d[i*4]=c[0];d[i*4+1]=c[1];d[i*4+2]=c[2];d[i*4+3]=255; }
+  ctx.putImageData(img,0,0);
+}
+window.render = render;
+
+const q = new URLSearchParams(location.search);
+const opts = {pal:q.get('pal')||'gray', combo:[1604,40], mode:q.get('mode')||'scene', stage:+(q.get('stage')??6), kinsey:+(q.get('stage')??6)};
+if (q.has('t')) render(parseFloat(q.get('t')), opts);
+else { const t0=performance.now(); (function loop(){ render((performance.now()-t0)/1000, opts); requestAnimationFrame(loop); })(); }
+</script>
+</body>
+</html>
