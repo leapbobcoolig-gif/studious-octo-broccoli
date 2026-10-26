@@ -186,7 +186,9 @@ function tex(unit, w, h, data){ const t=gl.createTexture(); gl.activeTexture(gl.
   else gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,data); return t; }
 const U=n=>gl.getUniformLocation(prog,n);
 // decode sprite data exactly (no colour profile, no premultiplied alpha): these PNGs hold numbers, not colours
-async function loadImg(src){ const blob=await (await fetch(src)).blob();
+// (data: URIs are decoded by hand: the artifact viewer blocks fetch() for them)
+function dataBlob(src){ const [head,b64]=src.split(','); const bin=atob(b64), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return new Blob([u],{type:head.slice(5).split(';')[0]}); }
+async function loadImg(src){ const blob=src.startsWith('data:')?dataBlob(src):await (await fetch(src)).blob();
   try{ return await createImageBitmap(blob,{premultiplyAlpha:'none',colorSpaceConversion:'none'}); }
   catch(e){ return await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=URL.createObjectURL(blob); }); } }
 
@@ -194,7 +196,7 @@ async function loadImg(src){ const blob=await (await fetch(src)).blob();
 const S=GAME.S.settings; let MOUSE=null;
 let META, rooms={};
 function setLUTs(){ const L=buildLUTs(S.gray); tex(3,256,1,L.lut); tex(4,256,1,L.lineCol); tex(5,RAMP_N*16,1,L.ramp); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, S.gray?rooms.gray:rooms.color); }
-async function boot(){
+async function bootInner(){
   const [mat,nrm,rc,rg,meta]=await Promise.all([loadImg('game/sprites/press_close.mat.png'),loadImg('game/sprites/press_close.nrm.png'),
     loadImg('game/sprites/room_color.png'),loadImg('game/sprites/room_gray.png'),fetch('game/sprites/press_close.json').then(r=>r.json()).catch(()=>null)]);
   META=meta||{frames:[120,50,40,70,60,60,70,80].map(ms=>({ms}))};
@@ -204,6 +206,7 @@ async function boot(){
   gl.uniform1i(U('uMat'),0); gl.uniform1i(U('uNrm'),1); gl.uniform1i(U('uRoom'),2); gl.uniform1i(U('uLut'),3); gl.uniform1i(U('uLine'),4); gl.uniform1i(U('uRamp'),5);
   requestAnimationFrame(loop);
 }
+async function boot(){ try{ await bootInner(); }catch(e){ console.error(e); const p=document.createElement('p'); p.style.cssText='color:#ff5c8a;text-align:center;padding:12px'; p.textContent='The game could not start: '+(e&&e.message||e); document.body.prepend(p); } }
 // -------------------------------------------------------------- loop -------
 const hud=document.getElementById('hud'), hctx=hud.getContext('2d'), hbuf=new Uint8ClampedArray(320*180*4);
 const C={ink:[26,15,30],paper:[255,246,234],uiD:[43,27,51],uiM:[91,68,112],heart:[255,92,138],blush:[255,125,154],brow:[58,39,33]};
