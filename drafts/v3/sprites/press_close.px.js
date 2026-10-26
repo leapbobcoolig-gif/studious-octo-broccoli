@@ -111,8 +111,7 @@ function herAss(dst, jig) {
       L.set(x, y, k)
     }
   }
-  for (let y = 102; y <= 142; y++) { L.set(160, y, "a"); if (y > 108) { L.set(159, y, "b"); L.set(161, y, "b") } }
-  for (const s of [-1, 1]) for (let i = 0; i < 8; i++) L.set(160 + s * (44 + i), 130 + Math.round(i * 0.8), "a")
+  for (let y = 102; y <= 142; y++) { if (!L.opaque(159, y + 2) || !L.opaque(161, y + 2)) break; L.set(160, y, "a"); if (y > 108) { L.set(159, y, "b"); L.set(161, y, "b") } }
   L.outline(HER_D, (x, y) => y < 84).clean(["o"]).over(dst)
 }
 function asshole(dst) {
@@ -200,26 +199,32 @@ function shaft(dst, top, bot) {
 // up out of his taint; folds (rugae) wrap around each testicle
 function sack(dst, cx, cy, mode) {
   const L = new Layer()
-  const p = mode === "slap" ? { rx: 21, ry: 11, nw: 7, lob: 9 } : mode === "mid" ? { rx: 18, ry: 14, nw: 6, lob: 10 } : { rx: 17, ry: 15, nw: 5, lob: 10 }
-  const top = cy - p.ry - 6
-  // neck rising into the taint (no outline at the top: it is the same skin)
-  for (let y = top; y < cy - p.ry + 4; y++) { const w = p.nw + (y - top) * 0.7; for (let x = Math.floor(cx - w); x <= cx + w; x++) L.set(x, y, x < cx - 2 ? "H" : "G") }
-  orb(L, cx, cy - 1, p.rx, p.ry, ["F", "G", "H", "I"])
-  // the two testicles show only as soft lower bulges either side of the seam
-  for (const s of [-1, 1]) for (let y = cy; y < cy + p.ry; y++) for (let x = cx + s * 2; Math.abs(x - cx) < p.rx; x += s) {
-    if (!L.opaque(x, y)) continue; const d = Math.hypot((x - (cx + s * p.lob * 0.9)) / p.lob, (y - (cy + 3)) / (p.ry - 3))
-    if (d > 0.9 && d < 1.15 && y > cy + 2) L.set(x, y, "F") }
-  L.each((x, y, k) => { if ((x - cx) * 0.55 + (y - cy) > p.ry * 0.7 && k === "H") L.set(x, y, "G") })
-  for (let y = top; y < cy + p.ry + 2; y++) { const x = cx + Math.round(Math.sin(y * 0.33) * 0.7); if (L.opaque(x, y)) L.set(x, y, y > cy ? "F" : "G") }
-  for (const [fx, fy, l] of [[-12, -3, 3], [-9, 2, 4], [-14, 5, 2], [-6, 7, 3], [-11, 9, 3], [4, -4, 3], [7, 1, 4], [10, 5, 3], [4, 8, 3], [-4, -7, 3], [2, -8, 2]]) {
-    if (mode === "slap" && fy > 6) continue
-    for (let i = 0; i < l; i++) { const X = cx + fx + i, Y = cy + fy + (i === 0 || i === l - 1 ? 1 : 0)
+  const p = mode === "slap" ? { r: 11.5, ry: 9, gap: 10.5, nw: 7, drop: 1 } : mode === "mid" ? { r: 10.5, ry: 11.5, gap: 9.5, nw: 6, drop: 2 } : { r: 10, ry: 12.5, gap: 9, nw: 5, drop: 3 }
+  const top = cy - p.ry - 8
+  // neck: loose skin rising into the taint, widening as it fills with the two balls
+  for (let y = top; y < cy; y++) { const w = p.nw + (y - top) * 0.55; for (let x = Math.floor(cx - w); x <= cx + w; x++) L.set(x, y, x < cx - 2 ? "H" : "G") }
+  // two balls side by side (the "3" seen sideways): each its own round form, left one hangs lower
+  const balls = [[cx - p.gap, cy + p.drop], [cx + p.gap, cy]]
+  for (const [bx, by] of balls) orb(L, bx, by, p.r, p.ry, ["F", "G", "H", "I"])
+  // notch between them at the bottom + seam running up into the neck
+  for (let y = cy - p.ry; y < cy + p.ry + 4; y++) {
+    const x = cx + Math.round(Math.sin(y * 0.3) * 0.6); if (!L.opaque(x, y)) continue
+    L.set(x, y, "F"); if (y > cy + 2 && L.opaque(x + 1, y)) L.set(x + 1, y, "G")
+  }
+  for (let y = cy + 3; y < cy + p.ry + 4; y++) for (let x = cx - 1; x <= cx + 1; x++) {           // carve the notch
+    const below = !L.opaque(x, y + 1) || y > cy + p.ry - 2
+    if (below && Math.abs(x - cx) <= (y - cy - 3) * 0.35) L.set(x, y, ".")
+  }
+  // a few folds (rugae) wrapping each ball, glint on the lit one
+  for (const [bx, by] of balls) for (const [fx, fy, l] of [[-5, 3, 5], [1, 6, 4], [-7, -1, 2]]) {
+    if (mode === "slap" && fy > 3) continue
+    for (let i = 0; i < l; i++) { const X = Math.round(bx + fx + i), Y = Math.round(by + fy + (i === 0 || i === l - 1 ? 1 : 0))
       const k = L.get(X, Y); if (k === "H") L.set(X, Y, "G"); else if (k === "I") L.set(X, Y, "H"); else if (k === "G") L.set(X, Y, "K") }
   }
-  if (mode === "slap") L.each((x, y, k) => { if (y > cy + p.ry - 3 && "GH".includes(k)) L.set(x, y, "F") })   // pressed onto her
+  L.set(balls[0][0] - 4, balls[0][1] - 5, "J"); L.set(balls[0][0] - 3, balls[0][1] - 5, "J")
+  if (mode === "slap") L.each((x, y, k) => { if (y > cy + p.ry - 2 && "GH".includes(k)) L.set(x, y, "F") })
   L.outline(GEN_D, (x, y) => y < top + 3).over(dst)
 }
-
 // ---------------------------------------------------------- re-shading -----
 // Take the reference silhouette (which parts exist where), throw away its interior shading,
 // and light every body region from the upper left based on the region's own shape:
