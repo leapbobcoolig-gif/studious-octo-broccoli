@@ -278,18 +278,35 @@ function deformMale(h, clench){
   for(let v=0;v<h.n;v++){ const p=h.rv(v); if(p[2]>-0.03 || p[1]<cy+0.01 || p[1]>cy+0.22) continue;
     const c=Math.exp(-((p[0]/0.014)**2))*smooth(cy+0.01,cy+0.05,p[1])*(1-smooth(cy+0.16,cy+0.22,p[1]));
     D[v*3]-=h.restN[v*3]*0.010*c; D[v*3+1]-=h.restN[v*3+1]*0.010*c; D[v*3+2]-=h.restN[v*3+2]*0.010*c; }
-  // hair volume: puff scalp outward a little, clumped
-  for(let v=0;v<h.n;v++) if(h.mat[v]===12){ const p=h.rv(v);
-    const c=0.006+0.004*Math.sin(p[0]*90+p[2]*60)*Math.sin(p[1]*70);
-    D[v*3]+=h.restN[v*3]*c; D[v*3+1]+=h.restN[v*3+1]*c; D[v*3+2]+=h.restN[v*3+2]*c; }
+  hairStyle(h, h.style||'swoop');
+}
+// sculpt hair out of the scalp: volume + chunky locks; 'swoop' pulls a fringe over one brow
+function hairStyle(h, style){
+  const D=h.disp, N=h.restN; let top=h.top;
+  if(!top){ top=0; for(let v=0;v<h.n;v++) top=Math.max(top,h.rest[v*3+1]); h.top=top; }
+  for(let v=0;v<h.n;v++){ if(h.mat[v]!==12) continue; const [x,y,z]=h.rv(v);
+    const a=Math.atan2(x,z), up=smooth(top-0.16,top-0.01,y);
+    let t;
+    if(style==='buzz') t=0.004+0.002*up;
+    else if(style==='curly') t=0.012+0.016*up + 0.007*Math.abs(Math.sin(a*7)*Math.sin(y*90));
+    else t=0.008+0.024*up + 0.006*Math.max(0,Math.sin(a*6+y*30));          // swoop: tall, clumped
+    let d=[N[v*3]*t, N[v*3+1]*t, N[v*3+2]*t];
+    if(style==='swoop' && z>0.02 && y>top-0.075){                          // fringe: front locks fall forward + across
+      const f=smooth(0.02,0.10,z)*smooth(top-0.075,top-0.03,y);
+      d=add(d,[ -0.018*f + 0.010*f*Math.sin(x*60), -0.030*f, 0.022*f ]); }
+    D[v*3]+=d[0]; D[v*3+1]+=d[1]; D[v*3+2]+=d[2]; }
 }
 
 // ------------------------------------------------------------- the press ---
 function posePress(her, him, t, o={}){
-  const bpm=o.bpm||100, period=60/bpm, ph=((t/period)%1+1)%1;
-  const out = ph<0.32 ? 1-(ph/0.32)**1.6 : ((ph-0.32)/0.68)**0.85;     // 1 = pulled back, 0 = balls deep
-  const impact=t-period*0.32;
-  const jig=spring(impact,period,9,30), swing=spring(impact-0.02,period,6,19);
+  const k=(o.kinsey??3)/6;                                            // 1 = still in denial, 0 = converted
+  const bpm=o.bpm||mixf(150,78,k), period=60/bpm, ph=((t/period)%1+1)%1;
+  const slam=mixf(0.22,0.40,k);                                      // converted guys slam fast
+  const out = (ph<slam ? 1-(ph/slam)**1.6 : ((ph-slam)/(1-slam))**0.85) * mixf(1.0,0.62,k);   // 1 = pulled back, 0 = balls deep
+  o._period=period; o._slam=slam;
+  const impact=t-period*slam;
+  const hard=mixf(1.25,0.55,k);
+  const jig=hard*spring(impact,period,9,30), swing=hard*spring(impact-0.02,period,6,19);
   const S={out,jig,swing};
 
   // ---------------- HER: on her back, hips rolled up, legs folded back
@@ -433,7 +450,7 @@ function buildGenitals(S, him){
   const back=norm(orthoTo(mul(S.T,-1),up));             // toward his legs / camera
   const sx=norm(cross(up,back));
   const sag=1+0.10*Math.max(0,-S.swing)*(0.4+S.out)+0.08*S.out;
-  const cB=add(add(S.root, [0,-0.040*sag,0]), mul(back,0.046+0.006*S.swing));
+  const cB=add(add(S.root, [0,-0.026*sag-0.012*S.out,0]), mul(back,0.060+0.006*S.swing));
   const neckTo=add(add(S.root, mul(back,0.040)),[0,0.012,0]);             // where the sack joins the body
   blob(M, cB, sx, up, back, (th,ph)=>{
     const lobes=1+0.30*Math.cos(2*th)*Math.sin(ph)**2;
@@ -443,7 +460,7 @@ function buildGenitals(S, him){
     r+=0.0009*Math.sin(15*th+11*ph)*Math.sin(ph);
     return [r*1.18, r*1.10*sag, r*0.92];
   }, (th,ph)=>{ const w=Math.sin(13*th+8*ph+0.6*Math.sin(5*th)); const raphe=Math.abs(Math.cos(th))<0.1 && ph>0.7;
-    return (ph>0.45 && w>0.82) || raphe ? 18 : 11; }, 30, 20, (p,th,ph)=>{
+    const raphe2=Math.abs(Math.cos(th))<0.07 && ph>0.55; return (ph>0.5 && w>0.9) || raphe2 ? 18 : 11; }, 30, 20, (p,th,ph)=>{
     // pull the top of the sack into the neck so it grows out of him, not a ball on a stick
     const k=ph<0.9? (1-smooth(0,0.9,ph))**1.5 : 0; let q=lerp3(p, add(neckTo, mul(sub(p,cB),0.35)), k*0.85);
     const d=dot(sub(q,S.V),S.U); return d<0.006? add(q, mul(S.U,0.006-d)) : q; });
@@ -547,18 +564,18 @@ function renderGBuffer(meshes, cam, w, h){
   gl.useProgram(GL.depth); gl.uniformMatrix4fv(gl.getUniformLocation(GL.depth,'uVP'),false,LVP);
   for(const o of meshes){ gl.bindVertexArray(o.vao); gl.drawElements(gl.TRIANGLES,o.count,gl.UNSIGNED_INT,0); }
   // g-buffer
-  if(!GL.fb || GL.fbW!==w || GL.fbH!==h){
-    GL.fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,GL.fb);
+  GL.fbs=GL.fbs||new Map(); const key=w+'x'+h;
+  if(!GL.fbs.has(key)){
+    const fb=gl.createFramebuffer(); GL.fbs.set(key,fb); gl.bindFramebuffer(gl.FRAMEBUFFER,fb);
     for(let i=0;i<3;i++){ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t); gl.texStorage2D(gl.TEXTURE_2D,1,gl.RGBA32F,w,h);
       gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0+i,gl.TEXTURE_2D,t,0); }
     const db=gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER,db); gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT32F,w,h);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,db);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1,gl.COLOR_ATTACHMENT2]);
-    GL.fbW=w; GL.fbH=h;
   }
-  gl.bindFramebuffer(gl.FRAMEBUFFER,GL.fb); gl.viewport(0,0,w,h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,GL.fbs.get(key)); gl.viewport(0,0,w,h);
   gl.clearBufferfv(gl.COLOR,0,[0,0,0,0]); gl.clearBufferfv(gl.COLOR,1,[0,0,0,0]); gl.clearBufferfv(gl.COLOR,2,[0,0,0,0]); gl.clear(gl.DEPTH_BUFFER_BIT);
-  const VP=m4mul(persp(cam.fov*Math.PI/180,w/h,0.05,20), lookAt(cam.p,cam.at,cam.up||[0,1,0]));
+  const VP=camVP(cam,w,h);
   const P=GL.gbuf; gl.useProgram(P);
   gl.uniformMatrix4fv(gl.getUniformLocation(P,'uVP'),false,VP);
   gl.uniformMatrix4fv(gl.getUniformLocation(P,'uLVP'),false,LVP);
@@ -570,4 +587,40 @@ function renderGBuffer(meshes, cam, w, h){
   for(let i=0;i<3;i++){ gl.readBuffer(gl.COLOR_ATTACHMENT0+i); const b=new Float32Array(w*h*4); gl.readPixels(0,0,w,h,gl.RGBA,gl.FLOAT,b);
     const o=new Float32Array(b.length); for(let y=0;y<h;y++) o.set(b.subarray((h-1-y)*w*4,(h-y)*w*4), y*w*4); bufs.push(o); }
   return bufs;
+}
+
+function camVP(cam,w,h){ return m4mul(persp(cam.fov*Math.PI/180,w/h,0.05,20), lookAt(cam.p,cam.at,cam.up||[0,1,0])); }
+function project(VP,p,w,h){ const x=VP[0]*p[0]+VP[4]*p[1]+VP[8]*p[2]+VP[12], y=VP[1]*p[0]+VP[5]*p[1]+VP[9]*p[2]+VP[13], ww=VP[3]*p[0]+VP[7]*p[1]+VP[11]*p[2]+VP[15];
+  return [(x/ww*0.5+0.5)*w, (1-(y/ww*0.5+0.5))*h, ww]; }
+
+// ------------------------------------------------------------- portrait -----
+function setupPortrait(h){
+  setupMale(h);
+  h.disp.fill(0); hairStyle(h, h.style||'swoop');
+  h.pose(h.restHead('root'), {}); h.skin();
+  const eyeY=h.restHead('eye.L')[1];
+  h.lm={ eyeL:add(h.restHead('eye.L'),[0,0,0.014]), eyeR:add(h.restHead('eye.R'),[0,0,0.014]),
+    mouth:h.rv(h.findVert(p=>Math.abs(p[0])<0.004 && p[1]<eyeY-0.05 && p[1]>eyeY-0.10, p=>-p[2]+Math.abs(p[1]-(eyeY-0.077))*0.5)) };
+  // outfit regions
+  h.baseMat=h.mat.slice();
+  h.shirt=[]; h.choker=[];
+  for(let v=0;v<h.n;v++){ const p=h.rv(v), b=h.domBone(v);
+    if(/spine0[1-3]|clavicle|shoulder01|breast|pectoral|upperarm01/.test(b) && p[1]<1.505 && h.mat[v]===10) h.shirt.push(v);
+    if(/neck0[12]/.test(b) && p[1]>1.505 && p[1]<1.522) h.choker.push(v); }
+  let top=0; for(let v=0;v<h.n;v++) top=Math.max(top,h.rest[v*3+1]); h.top=top;
+}
+function dressPortrait(h, stage){
+  const style = stage<=1 ? 'buzz' : (h.style||'swoop');
+  if(h._styled!==style){ h.disp.fill(0); hairStyle(h, style); h.pose(h.restHead('root'), {}); h.skin(); h._styled=style; }
+  h.mat.set(h.baseMat);
+  for(const v of h.shirt) h.mat[v]=20;
+  if(stage>=5) for(const v of h.choker) h.mat[v]=21;
+  const M=new Mesh();
+  if(stage<=1){ // backwards cap: crown + band + brim pointing behind him
+    const c=[0,h.top-0.045,-0.005];
+    blob(M,c,[1,0,0],[0,1,0],[0,0,1],(th,ph)=>ph<=Math.PI*0.52?[0.108,0.080,0.118]:[0.108,0.001,0.118],22,22,12);
+    blob(M,add(c,[0,0.004,-0.10]),[1,0,0],[0,1,0],[0,0,1],()=>[0.075,0.008,0.07],22,18,6);
+    blob(M,add(c,[0,0.07,0]),[1,0,0],[0,1,0],[0,0,1],()=>[0.012,0.006,0.012],22,8,6);
+  }
+  return smoothNormals(M.finish());
 }

@@ -12,6 +12,7 @@
 <canvas id="out" width="320" height="180"></canvas>
 <script src="assets/humans.js"></script>
 <script src="engine.js"></script>
+<script src="ui.js"></script>
 <script>
 'use strict';
 // ------------------------------------------------------------ palettes -----
@@ -31,18 +32,22 @@ function shadeRamp(base,n,o={}){ const [h,s0,l0]=rgb2hsl(...hex(base)); const sh
 const PALS={
   color:{ 1:['#4a3550',{spread:0.30}], 2:['#4b3d73',{spread:0.30}], 3:['#8a5a3e',{spread:0.5}], 4:['#cfc9e6',{spread:0.40,shift:14}],
     5:['#f2c6a8',{spread:0.42,shift:12,sat:0.55}], 6:['#f2c6a8',{spread:0.42,shift:12,sat:0.55}], 16:['#2b1b2b',{spread:0.22}],
-    7:['#ee9fa6',{spread:0.40,shift:10,sat:0.8}], 8:['#d9637c',{spread:0.45,shift:10}], 9:['#c46a7a',{spread:0.40,shift:10}],
-    10:['#c99470',{spread:0.46,shift:12,sat:0.6}], 11:['#ad6a5f',{spread:0.52,shift:10,sat:0.85}], 12:['#3a2721',{spread:0.28,shift:10}],
-    13:['#a58fb6',{spread:0.4}], 14:['#de7d8c',{spread:0.42,shift:10}], 17:['#1b2550',{spread:0.2}], 18:['#99594f',{spread:0.40,shift:10,sat:0.8}],
+    7:['#f1a3a8',{spread:0.38,shift:10,sat:0.95}], 8:['#d24f72',{spread:0.42,shift:10}], 9:['#c05a74',{spread:0.40,shift:10}],
+    10:['#c99470',{spread:0.46,shift:12,sat:0.6}], 11:['#bf7a6c',{spread:0.50,shift:10,sat:0.85}], 12:['#3a2721',{spread:0.28,shift:10}],
+    13:['#a58fb6',{spread:0.4}], 14:['#de7d8c',{spread:0.42,shift:10}], 17:['#1b2550',{spread:0.2}], 18:['#a2625a',{spread:0.40,shift:10,sat:0.8}],
+    20:['#e58fb0',{spread:0.40,shift:10}], 21:['#2a1d2a',{spread:0.2}], 22:['#2c3a66',{spread:0.36,shift:10}],
+    ui:{ink:'#1a0f1e',paper:'#fff6ea',uiD:'#2b1b33',uiM:'#5b4470',heart:'#ff5c8a',blush:'#ff7d9a',brow:'#3a2721'},
     net:'#2a1820', window0:'#0e1430', window1:'#1b2550', star:'#fff4c9', cloud:'#2c3768', ink:'#1a0f1e', glint:'#fff8ee' },
   gray:{ 1:['#4a4a4a',{spread:0.3}], 2:['#5a5a5a',{spread:0.25}], 3:['#8c8c8c',{spread:0.5}], 4:['#cdcdcd',{spread:0.40}],
     5:['#e6e6e6',{spread:0.38}], 6:['#e6e6e6',{spread:0.38}], 16:['#2a2a2a',{spread:0.2}], 7:['#ecbcc5',{spread:0.36}], 8:['#d9899a',{spread:0.45}], 9:['#c98595',{spread:0.4}],
     10:['#a8a8a8',{spread:0.46}], 11:['#8f8a8a',{spread:0.48}], 12:['#363636',{spread:0.28}], 13:['#9a9a9a',{spread:0.4}], 14:['#d9899a',{spread:0.45}], 17:['#2a2a2a',{spread:0.2}], 18:['#6e6969',{spread:0.4}],
+    20:['#cfcfcf',{spread:0.40}], 21:['#2a2a2a',{spread:0.2}], 22:['#3a3a3a',{spread:0.3}],
+    ui:{ink:'#121212',paper:'#f4f4f4',uiD:'#1e1e1e',uiM:'#4a4a4a',heart:'#e8a0ae',blush:'#e8a0ae',brow:'#2a2a2a'},
     net:'#262626', window0:'#1c1c1c', window1:'#2a2a2a', star:'#f4f4f4', cloud:'#3c3c3c', ink:'#121212', glint:'#ffffff' },
 };
 const rampCache={};
 function ramps(pal){ if(rampCache[pal]) return rampCache[pal]; const P=PALS[pal], R={}; for(const k in P) if(Array.isArray(P[k])) R[k]=shadeRamp(P[k][0],4,P[k][1]); return rampCache[pal]=R; }
-const group=m=> m===10||m===12 ? 'him' : (m===11||m===14||m===18) ? 'gen' : (m>=5&&m<=9)||m===16 ? 'her' : 'room';
+const group=m=> m===10||m===12||m===20||m===21||m===22 ? 'him' : (m===11||m===14||m===18) ? 'gen' : (m===7||m===8||m===9) ? 'puss' : (m===5||m===6||m===16) ? 'her' : 'room';
 
 // --------------------------------------------------------- pixel post -----
 const BAY=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5].map(v=>(v+0.5)/16);
@@ -68,8 +73,10 @@ function post(bufs, w, h, opt){
   for(let i=0;i<N;i++){ if(!mat[i]) continue;
     const key=g0[i*4+2], vdn=g1[i*4+3], spec=g2[i*4], rim=g2[i*4+1];
     const ndl=nrm[i*3]*-0.45+nrm[i*3+1]*0.85+nrm[i*3+2]*0.55;
-    let s=0.17+0.66*key+0.15*Math.max(0,(ndl/1.13+0.4)/1.4);
+    const keyRaw=g0[i*4+3]; const softKey=keyRaw*(0.38+0.62*(keyRaw>0.001?Math.min(1,key/keyRaw):0));
+    let s=0.13+0.60*softKey+0.12*Math.max(0,(ndl/1.13+0.4)/1.4)+(group(mat[i])!=='room'?0.16*vdn:0.06*vdn);   // key + sky + camera-side fill
     s*=mixf(1,ao[i],0.8); s+=rim*0.30;
+    if(opt.flat) s=0.42+0.58*s;
     shade[i]= opt.mode==='clay' ? (0.12+0.55*vdn+0.35*key)*mixf(1,ao[i],0.7) : s;
   }
   // edges: silhouette (depth jump), body/body contact, sharp creases
@@ -81,7 +88,8 @@ function post(bufs, w, h, opt){
       const dz=dep[j]-dep[i];
       if(dz>0.03*dep[i]+0.012){ edge[i]= gi!=='room'&&group(mj)==='room' ? 2 : 1; break; }
       if(gi!=='room' && group(mj)!==gi && dz>0){ edge[i]=1; break; }
-      if(gi!=='room'){ const cd=nrm[i*3]*nrm[j*3]+nrm[i*3+1]*nrm[j*3+1]+nrm[i*3+2]*nrm[j*3+2]; if(cd<0.45 && dz>0){ edge[i]=1; break; } }
+      if(gi!=='room' && !(opt.noCrease && m!==12 && mj!==12)){ const cd=nrm[i*3]*nrm[j*3]+nrm[i*3+1]*nrm[j*3+1]+nrm[i*3+2]*nrm[j*3+2]; if(cd<0.45 && dz>0){ edge[i]=1; break; } }
+      if(m!==mj && (m===12||mj===12||m===22||mj===22) && dz>0){ edge[i]=1; break; }
     } }
   // tone levels: few, crisp bands; top band kept small so it reads as a highlight, not plastic
   const lvl=new Int8Array(N).fill(-1);
@@ -105,6 +113,7 @@ function post(bufs, w, h, opt){
       if(g2[i*4]>0.82 && (m===5||m===10||m===14||m===8)) c=hex(P.glint);
       if(m===6 && ((x+y)%4===0 || (x-y+400)%4===0)) c= L<=1 ? hex(P.ink) : hex(P.net);
       if(m===17) c=windowPx(x,y,g2[i*4+2],g2[i*4+3],P);
+      if(m===20 && opt.shirt){ c=opt.shirt[L]; if(opt.flannel && ((((x>>1)+(y>>1))&1)===0 || (x%4===0))) c=opt.shirt[Math.max(0,L-2)]; }
       if(edge[i]) c = edge[i]===2 ? ink : (r? r[0].map(v=>v*0.6) : ink);
     }
     out[i*4]=c[0]; out[i*4+1]=c[1]; out[i*4+2]=c[2]; out[i*4+3]=255; }
@@ -142,8 +151,28 @@ const CAMS={
   herside:{p:[1.6,0.35,0.0], at:[0,0.3,-0.1], fov:40},
 };
 const outC=document.getElementById('out'), octx=outC.getContext('2d');
+const himP=new Human(H,'male'); setupPortrait(himP);
+const PCAM={p:[0.17,1.62,1.05], at:[0.0,1.595,0.05], fov:20};
+const SHIRTS={color:{6:'#e58fb0',3:'#e9e6f0',0:'#b4433f'}, gray:{6:'#d8d8d8',3:'#efefef',0:'#7a7a7a'}};
+function renderPortrait(stage, t, opt){
+  const pw=64, ph=72;
+  const cap=glMesh('cap', dressPortrait(himP, stage));
+  const body=glMesh('himP',{pos:himP.pos,nrm:himP.nrm,mat:himP.mat,idx:himP.tris});
+  const bufs=renderGBuffer([body,cap], PCAM, pw, ph);
+  const st = stage>=5?6: stage>=2?3:0;
+  const sc=SHIRTS[opt.pal]||SHIRTS.gray;
+  const px=post(bufs,pw,ph,Object.assign({},opt,{cam:PCAM, noCrease:true, flat:true, shirt:shadeRamp(sc[st],4,{spread:0.42,shift:10}), flannel:st===0}));
+  const VP=camVP(PCAM,pw,ph);
+  const L=himP.lm, eL=project(VP,L.eyeL,pw,ph), eR=project(VP,L.eyeR,pw,ph), mo=project(VP,add(L.mouth,[0,0,0.004]),pw,ph);
+  // background behind him (empty pixels)
+  const P=PALS[opt.pal]||PALS.gray, U=P.ui;
+  for(let i=0;i<pw*ph;i++) if(px[i*4]===0&&px[i*4+1]===0&&px[i*4+2]===0){ const y=(i/pw)|0, x=i%pw; const c=hexc(((x+y)&1)&&y>ph*0.55?U.uiM:U.uiD); px[i*4]=c[0];px[i*4+1]=c[1];px[i*4+2]=c[2]; }
+  const c=new Canvas2(px,pw,ph);
+  UI.drawExpression(c, stage, [eR,eL].sort((a,b)=>a[0]-b[0]), mo, {ink:hexc(U.ink),brow:hexc(U.brow),heart:hexc(U.heart),blush:hexc(U.blush)}, t);
+  return {px,pw,ph};
+}
 function renderFrame(t, opt={}){
-  opt=Object.assign({pal:'gray', mode:'pixel', cam:'game', w:320, h:180}, opt);
+  opt=Object.assign({pal:'gray', mode:'pixel', cam:'game', w:320, h:180, kinsey:3, ui:true, score:7815, hearts:3, combo:[1604,40]}, opt);
   opt.cam = typeof opt.cam==='string' ? CAMS[opt.cam] : opt.cam;
   const S=posePress(her, him, t, opt);
   const herM=glMesh('her',{pos:her.pos,nrm:her.nrm,mat:her.mat,idx:her.tris});
@@ -152,6 +181,22 @@ function renderFrame(t, opt={}){
   const list=[room,herM,himM,genM].filter((m,k)=>!(opt.hide||[]).includes(['room','her','him','gen'][k]));
   const bufs=renderGBuffer(list, opt.cam, opt.w, opt.h);
   const px=post(bufs, opt.w, opt.h, opt);
+  if(opt.ui && opt.mode!=='clay'){
+    const P=PALS[opt.pal]||PALS.gray, U=P.ui, C={}; for(const k in U) C[k]=hexc(U[k]);
+    const c=new Canvas2(px,opt.w,opt.h);
+    // rhythm ring on her pussy: shrinks onto it, lands on the slam
+    const VP=camVP(opt.cam,opt.w,opt.h), vp=project(VP,S.V,opt.w,opt.h);
+    const period=opt._period, ph=((t/period)%1+1)%1, toHit=((opt._slam-ph)+1)%1;
+    const judge = toHit>0.9||toHit<0.04 ? (Math.floor(t/period)%3===2?'GOOD':'PERFECT!') : null;
+    UI.rhythm(c, vp[0], vp[1], toHit<0.7?toHit/0.7:0, C, judge);
+    if(S.out<0.12) c.textOutlined('PLAP!', Math.round(vp[0])+22, Math.round(vp[1])-28, C.paper, C.ink);
+    const pr=renderPortrait(opt.kinsey, t, opt);
+    const pxX=4, pxY=opt.h-pr.ph-4;
+    c.rect(pxX-2,pxY-2,pr.pw+4,pr.ph+4,C.ink); c.copyFrom(pr.px,pr.pw,pr.ph,pxX,pxY);
+    const lines=UI.LINES[opt.kinsey]||UI.LINES[3]; const ln=lines[Math.floor(t/3)%lines.length];
+    UI.speech(c, pxX+pr.pw+6, pxY+2, ln, C);
+    UI.hud(c, {score:opt.score, hearts:opt.hearts, combo:opt.combo, kinsey:opt.kinsey, toolHot:-1}, C);
+  }
   outC.width=opt.w; outC.height=opt.h; octx.putImageData(new ImageData(px,opt.w,opt.h),0,0);
   return S;
 }
